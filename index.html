@@ -85,26 +85,30 @@ async function loadDesigns() {
   const grid = document.getElementById('templateGrid');
   grid.innerHTML = '';
 
-  // 1. Plantillas base locales (catalog.json)
+  // 1. Plantilla base local (siempre visible)
   try {
-    const res = await fetch('templates/catalog.json');
+    const res     = await fetch('templates/catalog.json');
     const catalog = await res.json();
     catalog.forEach(t => {
-      const thumb = `<img src="templates/promo-bg.jpg" alt="${t.name}" loading="lazy" />`;
-      addCard(grid, thumb, t.name, `editor.html?local=${encodeURIComponent(t.id)}`);
+      addCard(grid,
+        `<img src="templates/promo-bg.jpg" alt="${t.name}" loading="lazy" />`,
+        t.name,
+        `editor.html?local=${encodeURIComponent(t.id)}`
+      );
     });
   } catch(e) {}
 
-  // 2. Diseños de Firebase
+  // 2. Diseños adicionales desde Firebase
   try {
     const q = query(collection(db, 'designs'), orderBy('createdAt', 'asc'));
     const snap = await getDocs(q);
     snap.docs.forEach(d => {
       const data = d.data();
-      const thumb = data.backgroundUrl
-        ? `<img src="${data.backgroundUrl}" alt="${data.name}" loading="lazy" />`
-        : `<div style="height:160px;background:linear-gradient(135deg,#0d1b3e,#0a3d52);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.2);font-size:2rem;">🖼</div>`;
-      addCard(grid, thumb, data.name, `editor.html?id=${encodeURIComponent(d.id)}`);
+      addCard(grid,
+        `<img src="${data.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${data.name}" loading="lazy" />`,
+        data.name,
+        `editor.html?id=${encodeURIComponent(d.id)}`
+      );
     });
   } catch(e) { console.error(e); }
 }

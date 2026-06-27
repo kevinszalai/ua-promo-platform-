@@ -155,11 +155,11 @@
     </radialGradient>
     <radialGradient id="Viñeta_negra_supersuave1" data-name="Viñeta negra supersuave" cx="-1436.75" cy="302.26" fx="-1436.75" fy="302.26" r="1" gradientTransform="translate(634372.89 -1126698.3) rotate(-88.63) scale(785.35 -2007.07) skewX(-3.38)" xlink:href="#Viñeta_negra_supersuave"/>
   </defs>
-  <image width="4289" height="4017" transform="translate(-2.15 -11.05) scale(.14)" xlink:href="templates/promo-bg.jpg"/>
-  <image width="1829" height="1819" transform="translate(-17.22 98.26) scale(.24)" xlink:href="templates/promo-bg.jpg"/>
+  <image width="4289" height="4017" transform="translate(-2.15 -11.05) scale(.14)" xlink:href=""/>
+  <image width="1829" height="1819" transform="translate(-17.22 98.26) scale(.24)" xlink:href=""/>
   <path class="st18" d="M602.06,174.56v458.51c0,30.15-137.59,54.58-307.32,54.58h0c-169.73,0-307.32-24.44-307.32-54.58V174.56c0-30.15,137.59-54.58,307.32-54.58h0c169.73,0,307.32,24.44,307.32,54.58Z"/>
   <g class="st20">
-    <image width="2186" height="2119" transform="translate(-53.94 62.26) scale(.24)" xlink:href="templates/promo-bg.jpg"/>
+    <image width="2186" height="2119" transform="translate(-53.94 62.26) scale(.24)" xlink:href=""/>
   </g>
   <path class="st17" d="M-43.81,538.45V7.43c0-34.91,150.39-63.22,335.89-63.22h0c185.51,0,335.9,28.3,335.9,63.22v531.03c0,34.91-150.39,63.22-335.89,63.22h0c-185.51,0-335.9-28.3-335.9-63.22Z"/>
   <g>
@@ -302,6 +302,6 @@
         <path class="st14" d="M355.45,593.65h-6.15c-.07,0-.11.04-.11.11v1.97c0,.76.21,1.37.63,1.85.42.48.98.71,1.66.71.57,0,1.07-.17,1.47-.53s.67-.8.8-1.36c.05-.16.15-.24.3-.24l1.35.05c.07,0,.13.03.19.08.05.05.07.13.05.22-.14,1.06-.58,1.9-1.31,2.52-.73.62-1.68.93-2.84.93-1.28,0-2.3-.38-3.06-1.13-.76-.75-1.15-1.75-1.15-2.99v-5.83c0-1.22.38-2.21,1.15-2.98.76-.76,1.78-1.15,3.06-1.15s2.32.38,3.09,1.15c.76.76,1.15,1.76,1.15,2.98v3.37c0,.18-.09.27-.27.27ZM349.82,588.28c-.42.48-.63,1.1-.63,1.87v1.81c0,.07.04.11.11.11h4.42c.07,0,.11-.03.11-.11v-1.81c0-.77-.22-1.4-.65-1.87-.43-.48-1-.72-1.7-.72s-1.24.24-1.66.72Z"/>
       </g>
     </g>
-    <image width="842" height="873" transform="translate(391.09 561.25) scale(.16)" xlink:href="templates/promo-bg.jpg"/>
+    <image width="842" height="873" transform="translate(391.09 561.25) scale(.16)" xlink:href=""/>
   </g>
 </svg>

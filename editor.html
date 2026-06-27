@@ -34,12 +34,12 @@
   </div>
 
   <div class="stepper-card">
-    <div class="step done" id="step1">
+    <div class="step done">
       <div class="step-num">✓</div>
       <span class="step-label">Diseño seleccionado</span>
     </div>
     <div class="step-line done"></div>
-    <div class="step active" id="step2">
+    <div class="step active">
       <div class="step-num">2</div>
       <span class="step-label">Editá los campos</span>
     </div>
@@ -72,7 +72,7 @@
         </div>
         <div class="card-body">
           <div class="btn-group">
-            <button class="btn-primary" id="btnPNG" disabled>⏳ Cargando...</button>
+            <button class="btn-primary" id="btnPNG">⬇ Descargar PNG</button>
           </div>
           <div class="live-pill">
             <span class="live-dot"></span>
@@ -105,21 +105,13 @@
 <div id="toast" class="toast"><span class="toast-icon">✓</span><span id="toastMsg"></span></div>
 <canvas id="exportCanvas" style="display:none;"></canvas>
 
-<script type="module">
-import { initializeApp }                  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, getDoc }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { firebaseConfig }                 from './js/firebase-config.js';
-
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-
+<script>
 const params     = new URLSearchParams(location.search);
-const designId   = params.get('id');
-const localId    = params.get('local');
-let svgText      = '';
-let config       = null;
-let vals         = {};
-let enabled      = {};
+const templateId = params.get('id') || params.get('local');
+let svgText = '';
+let config  = null;
+let vals    = {};
+let enabled = {};
 let bebasFontBase64 = '';
 
 function toast(msg) {
@@ -129,31 +121,21 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ── Load design from Firestore or catalog.json ────────────────────────────────
 async function init() {
-  if (!designId && !localId) { location.href = 'index.html'; return; }
+  if (!templateId) { location.href = 'index.html'; return; }
 
-  if (localId) {
-    // Load from local catalog.json
-    const res     = await fetch('templates/catalog.json');
-    const catalog = await res.json();
-    config = catalog.find(t => t.id === localId);
-    if (!config) { location.href = 'index.html'; return; }
-  } else {
-    // Load from Firestore
-    const snap = await getDoc(doc(db, 'designs', designId));
-    if (!snap.exists()) { location.href = 'index.html'; return; }
-    config = { id: snap.id, ...snap.data() };
-  }
+  const res     = await fetch('templates/catalog.json');
+  const catalog = await res.json();
+  config = catalog.find(t => t.id === templateId);
+  if (!config) { location.href = 'index.html'; return; }
 
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
 
-  // Load SVG template
-  const svgRes = await fetch('templates/promo-mx.svg');
+  const svgRes = await fetch(config.file);
   const rawSvg = await svgRes.text();
 
-  // Fetch background image (Firebase or local default) and embed as base64
+  // Inject background image as base64 so canvas export works
   const bgUrl = config.backgroundUrl || 'templates/promo-bg.jpg';
   try {
     const imgRes = await fetch(bgUrl);
@@ -163,10 +145,7 @@ async function init() {
     bytes.forEach(b => bin += String.fromCharCode(b));
     const b64  = btoa(bin);
     const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-    svgText = rawSvg.replace(
-      /(<image[^>]*xlink:href=")[^"]*(")/,
-      `$1data:${mime};base64,${b64}$2`
-    );
+    svgText = rawSvg.replace(/(<image[^>]*xlink:href=")[^"]*("/), `$1data:${mime};base64,${b64}$2`);
   } catch(e) {
     svgText = rawSvg;
   }
@@ -179,13 +158,13 @@ async function init() {
   renderFields();
   renderPreview();
 
+  document.getElementById('btnPNG').disabled = true;
+  document.getElementById('btnPNG').textContent = '⏳ Cargando fuente...';
   await preloadBebasFont();
-  const btn = document.getElementById('btnPNG');
-  btn.textContent = '⬇ Descargar PNG';
-  btn.disabled = false;
+  document.getElementById('btnPNG').textContent = '⬇ Descargar PNG';
+  document.getElementById('btnPNG').disabled = false;
 }
 
-// ── Bebas Neue font preload ───────────────────────────────────────────────────
 async function preloadBebasFont() {
   try {
     const res   = await fetch('assets/fonts/BebasNeue-Regular.woff2');
@@ -197,7 +176,6 @@ async function preloadBebasFont() {
   } catch(e) { console.warn('Font load error', e); }
 }
 
-// ── Render form fields ────────────────────────────────────────────────────────
 function renderFields() {
   const c = document.getElementById('fieldsContainer');
   c.innerHTML = '';
@@ -224,11 +202,11 @@ function renderFields() {
         enabled[f.id] = e.target.checked;
         const body = document.getElementById(`body-${f.id}`);
         const sel  = document.getElementById(`f-${f.id}`);
-        if (e.target.checked) { body.style.display = ''; sel.disabled = false; vals[f.id] = parseInt(sel.value); }
-        else { body.style.display = 'none'; sel.disabled = true; vals[f.id] = ''; }
+        if (e.target.checked) { body.style.display=''; sel.disabled=false; vals[f.id]=parseInt(sel.value); }
+        else { body.style.display='none'; sel.disabled=true; vals[f.id]=''; }
         renderPreview();
       });
-      g.querySelector(`#f-${f.id}`).addEventListener('change', e => { vals[f.id] = parseInt(e.target.value); renderPreview(); });
+      g.querySelector(`#f-${f.id}`).addEventListener('change', e => { vals[f.id]=parseInt(e.target.value); renderPreview(); });
       if (!vals[f.id] && isOn) vals[f.id] = 3;
 
     } else if (f.optional) {
@@ -242,18 +220,18 @@ function renderFields() {
           </label>
         </div>
         <div class="field-optional-body" id="body-${f.id}" style="${isOn ? '' : 'display:none;'}">
-          <input type="text" id="f-${f.id}" placeholder="${f.placeholder || ''}" value="" autocomplete="off" maxlength="50" ${isOn ? '' : 'disabled'} />
+          <input type="text" id="f-${f.id}" placeholder="${f.placeholder||''}" value="" autocomplete="off" maxlength="50" ${isOn ? '' : 'disabled'} />
           ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}
         </div>`;
       g.querySelector(`#toggle-${f.id}`).addEventListener('change', e => {
         enabled[f.id] = e.target.checked;
         const body  = document.getElementById(`body-${f.id}`);
         const input = document.getElementById(`f-${f.id}`);
-        if (e.target.checked) { body.style.display = ''; input.disabled = false; input.focus(); }
-        else { body.style.display = 'none'; input.disabled = true; vals[f.id] = ''; input.value = ''; }
+        if (e.target.checked) { body.style.display=''; input.disabled=false; input.focus(); }
+        else { body.style.display='none'; input.disabled=true; vals[f.id]=''; input.value=''; }
         renderPreview();
       });
-      g.querySelector(`#f-${f.id}`).addEventListener('input', e => { vals[f.id] = e.target.value; renderPreview(); });
+      g.querySelector(`#f-${f.id}`).addEventListener('input', e => { vals[f.id]=e.target.value; renderPreview(); });
 
     } else if (f.type === 'select') {
       g.innerHTML = `
@@ -263,7 +241,7 @@ function renderFields() {
           ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
         </select>
         ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}`;
-      g.querySelector(`#f-${f.id}`).addEventListener('change', e => { vals[f.id] = e.target.value; renderPreview(); });
+      g.querySelector(`#f-${f.id}`).addEventListener('change', e => { vals[f.id]=e.target.value; renderPreview(); });
 
     } else {
       g.innerHTML = `
@@ -271,15 +249,15 @@ function renderFields() {
         <input type="${f.type||'text'}" id="f-${f.id}"
           placeholder="${f.placeholder||''}" value="" autocomplete="off"
           ${f.min ? `min="${f.min}"` : ''} ${f.max ? `max="${f.max}"` : ''}
-          ${f.id === 'descuento' ? 'maxlength="2"' : ''} />
+          ${f.id==='descuento' ? 'maxlength="2"' : ''} />
         ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}`;
       g.querySelector(`#f-${f.id}`).addEventListener('input', e => {
         let v = e.target.value;
-        if (v !== '' && f.max && Number(v) > f.max) { v = String(f.max); e.target.value = v; }
-        if (v !== '' && f.min && Number(v) < f.min) { v = String(f.min); e.target.value = v; }
+        if (v!=='' && f.max && Number(v)>f.max) { v=String(f.max); e.target.value=v; }
+        if (v!=='' && f.min && Number(v)<f.min) { v=String(f.min); e.target.value=v; }
         vals[f.id] = v;
         renderPreview();
-        if (Object.values(vals).some(x => x)) {
+        if (Object.values(vals).some(x=>x)) {
           document.getElementById('step3').classList.add('active');
           document.getElementById('line2').classList.add('done');
         }
@@ -289,24 +267,23 @@ function renderFields() {
   });
 }
 
-// ── Apply edits to SVG ────────────────────────────────────────────────────────
 function applyEdits(src, embedFont = false) {
   const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(src, 'image/svg+xml');
+  const doc    = parser.parseFromString(src, 'image/svg+xml');
 
   if (embedFont && bebasFontBase64) {
-    const styleEl = svgDoc.querySelector('style');
+    const styleEl = doc.querySelector('style');
     if (styleEl) {
       styleEl.textContent = `@font-face{font-family:'Bebas Neue';src:url('data:font/woff2;base64,${bebasFontBase64}') format('woff2');}\n` + styleEl.textContent;
     }
   }
 
-  (config.hideSelectors || []).forEach(sel => {
-    svgDoc.querySelectorAll(sel).forEach(el => el.setAttribute('visibility', 'hidden'));
+  (config.hideSelectors||[]).forEach(sel => {
+    doc.querySelectorAll(sel).forEach(el => el.setAttribute('visibility','hidden'));
   });
 
   function setField(selector, value) {
-    const tspan = svgDoc.querySelector(selector);
+    const tspan = doc.querySelector(selector);
     if (!tspan) return;
     tspan.textContent = value || '';
     if (value) {
@@ -316,41 +293,44 @@ function applyEdits(src, embedFont = false) {
   }
 
   config.fields.forEach(f => {
-    if (f.type === 'cuotas' || f.id === 'beneficio2') return;
+    if (f.type==='cuotas' || f.id==='beneficio2') return;
     if (!f.selector) return;
-    setField(f.selector, (f.optional && !enabled[f.id]) ? '' : (vals[f.id] || ''));
+    setField(f.selector, (f.optional && !enabled[f.id]) ? '' : (vals[f.id]||''));
   });
 
-  const cuotasOn  = enabled['cuotas'] && vals['cuotas'];
-  const bene2Val  = (enabled['beneficio2'] && vals['beneficio2']) ? vals['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
+  const cuotasOn = enabled['cuotas'] && vals['cuotas'];
+  const bene2Val = (enabled['beneficio2'] && vals['beneficio2']) ? vals['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
 
   if (cuotasOn) {
-    setField(config.selectorCuotas,   `+ ${vals['cuotas']} CUOTAS SIN INTERES`);
+    setField(config.selectorCuotas,    `+ ${vals['cuotas']} CUOTAS SIN INTERES`);
     setField(config.selectorBeneficio2, bene2Val);
   } else {
     setField(config.selectorCuotas,    bene2Val);
     setField(config.selectorBeneficio2, '');
   }
 
-  (config.bebasSelectors || []).forEach(sel => {
-    svgDoc.querySelectorAll(sel).forEach(el => {
+  (config.bebasSelectors||[]).forEach(sel => {
+    doc.querySelectorAll(sel).forEach(el => {
       el.setAttribute('style', (el.getAttribute('style')||'') + '; font-family: "Bebas Neue", sans-serif !important;');
     });
   });
 
-  return new XMLSerializer().serializeToString(svgDoc);
+  return new XMLSerializer().serializeToString(doc);
 }
 
-// ── Preview ───────────────────────────────────────────────────────────────────
 function renderPreview() {
   const modified = applyEdits(svgText, false);
   const wrap = document.getElementById('previewWrap');
   wrap.innerHTML = modified;
   const svgEl = wrap.querySelector('svg');
-  if (svgEl) { svgEl.style.width = '100%'; svgEl.style.height = 'auto'; svgEl.removeAttribute('width'); svgEl.removeAttribute('height'); }
+  if (svgEl) {
+    svgEl.style.width  = '100%';
+    svgEl.style.height = 'auto';
+    svgEl.removeAttribute('width');
+    svgEl.removeAttribute('height');
+  }
 }
 
-// ── Download PNG ──────────────────────────────────────────────────────────────
 document.getElementById('btnPNG').addEventListener('click', () => {
   if (!vals['descuento'] || Number(vals['descuento']) < 1) {
     toast('⚠ Completá el porcentaje de descuento para descargar');
@@ -379,7 +359,7 @@ document.getElementById('btnPNG').addEventListener('click', () => {
     canvas.toBlob(pngBlob => {
       const pu = URL.createObjectURL(pngBlob);
       const a  = document.createElement('a');
-      a.href = pu; a.download = `${config.name.replace(/\s+/g,'-')}.png`; a.click();
+      a.href = pu; a.download = `${templateId}-editado.png`; a.click();
       URL.revokeObjectURL(pu);
       toast('PNG descargado ✓');
     }, 'image/png');

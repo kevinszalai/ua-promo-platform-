@@ -448,6 +448,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
   background: #1a2a5e;
+  aspect-ratio: 600 / 768;
 }
 
 
