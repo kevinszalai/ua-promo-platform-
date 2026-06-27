@@ -112,7 +112,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { firebaseConfig, SVG_CONFIG } from './js/firebase-config.js';
+import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
@@ -197,48 +197,40 @@ async function renderFlyer() {
   const svgText = rawSvg.replace(/(<image[^>]*)(xlink:href="[^"]*")/,
     `$1xlink:href="${bgDataUrl}" href="${bgDataUrl}"`);
 
-  // Apply fields
+  // Apply fields using the same logic as editor.html
   const doc2   = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const fields  = submission.fields  || {};
   const enabled = submission.enabled || {};
-  const cfg     = SVG_CONFIG;
 
-  (cfg.hideSelectors||[]).forEach(sel =>
+  (SVG_CONFIG.hideSelectors||[]).forEach(sel =>
     doc2.querySelectorAll(sel).forEach(el => el.setAttribute('visibility','hidden')));
 
   function setField(sel, val) {
     const ts = doc2.querySelector(sel); if (!ts) return;
     ts.textContent = val || '';
+    if (val) {
+      const te = ts.closest('text') || ts.parentElement;
+      if (te) te.setAttribute('style', (te.getAttribute('style')||'') + '; font-family: "Bebas Neue", sans-serif !important;');
+    }
   }
 
-  // hasta / descuento
-  if (cfg.bebasSelectors) {
-    // find selector for hasta and descuento from DEFAULT_FIELDS
-  }
+  DEFAULT_FIELDS.forEach(f => {
+    if (f.type === 'cuotas' || f.id === 'beneficio2') return;
+    if (!f.selector) return;
+    setField(f.selector, (f.optional && !enabled[f.id]) ? '' : (fields[f.id] || ''));
+  });
 
-  // Use known selectors from SVG_CONFIG
-  const hastaField    = Object.keys(fields).find(k => k === 'hasta');
-  const descField     = Object.keys(fields).find(k => k === 'descuento');
-
-  // Apply each field by its selector (we use SVG_CONFIG which has selectorCuotas etc)
-  // For simplicity, apply the two main text fields via SVG_CONFIG selectors
-  // The bebasSelectors include the tspan selectors for hasta and descuento
-  const bebasSelectors = cfg.bebasSelectors || [];
-  // hasta is usually first selector, descuento second
-  if (bebasSelectors[0] && fields['hasta'])    setField(bebasSelectors[0], fields['hasta']);
-  if (bebasSelectors[1] && fields['descuento']) setField(bebasSelectors[1], fields['descuento']);
-
-  const cuotasOn  = enabled['cuotas'] && fields['cuotas'];
-  const bene2Val  = (enabled['beneficio2'] && fields['beneficio2']) ? fields['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
+  const cuotasOn = enabled['cuotas'] && fields['cuotas'];
+  const bene2Val = (enabled['beneficio2'] && fields['beneficio2']) ? fields['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
   if (cuotasOn) {
-    setField(cfg.selectorCuotas,     `+ ${fields['cuotas']} CUOTAS SIN INTERES`);
-    setField(cfg.selectorBeneficio2, bene2Val);
+    setField(SVG_CONFIG.selectorCuotas,     `+ ${fields['cuotas']} CUOTAS SIN INTERES`);
+    setField(SVG_CONFIG.selectorBeneficio2, bene2Val);
   } else {
-    setField(cfg.selectorCuotas,     bene2Val);
-    setField(cfg.selectorBeneficio2, '');
+    setField(SVG_CONFIG.selectorCuotas,     bene2Val);
+    setField(SVG_CONFIG.selectorBeneficio2, '');
   }
 
-  bebasSelectors.forEach(sel =>
+  (SVG_CONFIG.bebasSelectors||[]).forEach(sel =>
     doc2.querySelectorAll(sel).forEach(el =>
       el.setAttribute('style', (el.getAttribute('style')||'') + '; font-family: "Bebas Neue", sans-serif !important;')));
 
