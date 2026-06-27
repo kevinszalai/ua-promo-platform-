@@ -10,30 +10,22 @@
 </head>
 <body>
 
-<!-- HEADER -->
 <header class="header">
   <div class="header-left">
     <img src="assets/logo-ua-white.png" alt="Universal Assistance" style="height:32px;width:auto;" />
   </div>
   <div class="header-right">
-    <span class="header-email">kevinszalai@hotmail.com</span>
-    <button class="btn-header">Cerrar sesión</button>
     <a href="index.html" class="btn-header">← Inicio</a>
   </div>
 </header>
 
-<!-- SUBNAV -->
 <div class="subnav">
   <div class="subnav-label">
     <span class="subnav-dot"></span>
     Editor de Promos
   </div>
-  <div class="subnav-right">
-    <div class="country-btn" id="countryBtn">🇲🇽 México</div>
-  </div>
 </div>
 
-<!-- CONTENT -->
 <div class="container">
 
   <div class="page-heading">
@@ -41,11 +33,10 @@
     <p>Completá los campos y el preview se actualiza en tiempo real.</p>
   </div>
 
-  <!-- STEPPER -->
   <div class="stepper-card">
     <div class="step done" id="step1">
       <div class="step-num">✓</div>
-      <span class="step-label">Template seleccionado</span>
+      <span class="step-label">Diseño seleccionado</span>
     </div>
     <div class="step-line done"></div>
     <div class="step active" id="step2">
@@ -61,9 +52,7 @@
 
   <div class="editor-layout">
 
-    <!-- LEFT: form -->
     <div>
-      <!-- Datos de la promo -->
       <div class="card" style="margin-bottom:1.25rem;">
         <div class="card-header">
           <div class="card-header-accent"></div>
@@ -76,7 +65,6 @@
         </div>
       </div>
 
-      <!-- Descarga -->
       <div class="card">
         <div class="card-header">
           <div class="card-header-accent"></div>
@@ -84,7 +72,7 @@
         </div>
         <div class="card-body">
           <div class="btn-group">
-            <button class="btn-primary" id="btnPNG">⬇ Descargar PNG</button>
+            <button class="btn-primary" id="btnPNG" disabled>⏳ Cargando...</button>
           </div>
           <div class="live-pill">
             <span class="live-dot"></span>
@@ -94,7 +82,6 @@
       </div>
     </div>
 
-    <!-- RIGHT: preview -->
     <div class="preview-sticky">
       <div class="card">
         <div class="card-header">
@@ -118,13 +105,21 @@
 <div id="toast" class="toast"><span class="toast-icon">✓</span><span id="toastMsg"></span></div>
 <canvas id="exportCanvas" style="display:none;"></canvas>
 
-<script>
-const params = new URLSearchParams(location.search);
-const templateId = params.get('id');
-let svgText = '';
-let config = null;
-let vals = {};
-let enabled = {};
+<script type="module">
+import { initializeApp }                  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, doc, getDoc }      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { firebaseConfig }                 from './js/firebase-config.js';
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+const params     = new URLSearchParams(location.search);
+const designId   = params.get('id');
+let svgText      = '';
+let config       = null;
+let vals         = {};
+let enabled      = {};
+let bebasFontBase64 = '';
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -133,35 +128,69 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+// ── Load design from Firestore + SVG template ─────────────────────────────────
 async function init() {
-  if (!templateId) { location.href = 'index.html'; return; }
-  const res = await fetch('templates/catalog.json');
-  const catalog = await res.json();
-  config = catalog.find(t => t.id === templateId);
-  if (!config) { location.href = 'index.html'; return; }
+  if (!designId) { location.href = 'index.html'; return; }
+
+  const snap = await getDoc(doc(db, 'designs', designId));
+  if (!snap.exists()) { location.href = 'index.html'; return; }
+  config = { id: snap.id, ...snap.data() };
 
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
 
-  const svgRes = await fetch(config.file);
-  svgText = await svgRes.text();
+  // Load SVG template
+  const svgRes = await fetch('templates/promo-mx.svg');
+  const rawSvg = await svgRes.text();
+
+  // Fetch background image from Firebase and embed as base64
+  if (config.backgroundUrl) {
+    try {
+      const imgRes  = await fetch(config.backgroundUrl);
+      const buf     = await imgRes.arrayBuffer();
+      const bytes   = new Uint8Array(buf);
+      let bin = '';
+      bytes.forEach(b => bin += String.fromCharCode(b));
+      const b64 = btoa(bin);
+      const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+      svgText = rawSvg.replace(
+        /(<image[^>]*xlink:href=")[^"]*(")/,
+        `$1data:${mime};base64,${b64}$2`
+      );
+    } catch(e) {
+      svgText = rawSvg;
+    }
+  } else {
+    svgText = rawSvg;
+  }
 
   config.fields.forEach(f => {
-    vals[f.id] = '';
+    vals[f.id]    = '';
     enabled[f.id] = !f.optional;
   });
 
   renderFields();
   renderPreview();
 
-  // Load font BEFORE enabling download buttons
-  document.getElementById('btnPNG').disabled = true;
-  document.getElementById('btnPNG').textContent = '⏳ Cargando fuente...';
   await preloadBebasFont();
-  document.getElementById('btnPNG').textContent = '⬇ Descargar PNG';
-  document.getElementById('btnPNG').disabled = false;
+  const btn = document.getElementById('btnPNG');
+  btn.textContent = '⬇ Descargar PNG';
+  btn.disabled = false;
 }
 
+// ── Bebas Neue font preload ───────────────────────────────────────────────────
+async function preloadBebasFont() {
+  try {
+    const res   = await fetch('assets/fonts/BebasNeue-Regular.woff2');
+    const buf   = await res.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    bytes.forEach(b => bin += String.fromCharCode(b));
+    bebasFontBase64 = btoa(bin);
+  } catch(e) { console.warn('Font load error', e); }
+}
+
+// ── Render form fields ────────────────────────────────────────────────────────
 function renderFields() {
   const c = document.getElementById('fieldsContainer');
   c.innerHTML = '';
@@ -169,7 +198,6 @@ function renderFields() {
     const g = document.createElement('div');
     g.className = 'field-group';
 
-    // ── CUOTAS field (special toggle + dropdown 1–12) ──
     if (f.type === 'cuotas') {
       const isOn = enabled[f.id];
       g.innerHTML = `
@@ -182,33 +210,20 @@ function renderFields() {
         </div>
         <div class="field-optional-body" id="body-${f.id}" style="${isOn ? '' : 'display:none;'}">
           <select id="f-${f.id}" ${isOn ? '' : 'disabled'}>
-            ${Array.from({length:11},(_,i)=>`<option value="${i+2}" ${vals[f.id]==i+2?'selected':''}>${i+2} cuotas sin interés</option>`).join('')}
+            ${Array.from({length:11},(_,i)=>`<option value="${i+2}">${i+2} cuotas sin interés</option>`).join('')}
           </select>
-        </div>
-      `;
+        </div>`;
       g.querySelector(`#toggle-${f.id}`).addEventListener('change', e => {
         enabled[f.id] = e.target.checked;
         const body = document.getElementById(`body-${f.id}`);
         const sel  = document.getElementById(`f-${f.id}`);
-        if (e.target.checked) {
-          body.style.display = '';
-          sel.disabled = false;
-          vals[f.id] = parseInt(sel.value);
-        } else {
-          body.style.display = 'none';
-          sel.disabled = true;
-          vals[f.id] = '';
-        }
+        if (e.target.checked) { body.style.display = ''; sel.disabled = false; vals[f.id] = parseInt(sel.value); }
+        else { body.style.display = 'none'; sel.disabled = true; vals[f.id] = ''; }
         renderPreview();
       });
-      g.querySelector(`#f-${f.id}`).addEventListener('change', e => {
-        vals[f.id] = parseInt(e.target.value);
-        renderPreview();
-      });
-      // init default value
+      g.querySelector(`#f-${f.id}`).addEventListener('change', e => { vals[f.id] = parseInt(e.target.value); renderPreview(); });
       if (!vals[f.id] && isOn) vals[f.id] = 3;
 
-    // ── OPTIONAL text field with toggle ──
     } else if (f.optional) {
       const isOn = enabled[f.id];
       g.innerHTML = `
@@ -220,212 +235,133 @@ function renderFields() {
           </label>
         </div>
         <div class="field-optional-body" id="body-${f.id}" style="${isOn ? '' : 'display:none;'}">
-          <input type="text" id="f-${f.id}" placeholder="${f.placeholder || ''}" value="${vals[f.id] || ''}" autocomplete="off" maxlength="50" ${isOn ? '' : 'disabled'} />
+          <input type="text" id="f-${f.id}" placeholder="${f.placeholder || ''}" value="" autocomplete="off" maxlength="50" ${isOn ? '' : 'disabled'} />
           ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}
-        </div>
-      `;
+        </div>`;
       g.querySelector(`#toggle-${f.id}`).addEventListener('change', e => {
         enabled[f.id] = e.target.checked;
         const body  = document.getElementById(`body-${f.id}`);
         const input = document.getElementById(`f-${f.id}`);
-        if (e.target.checked) {
-          body.style.display = '';
-          input.disabled = false;
-          input.focus();
-        } else {
-          body.style.display = 'none';
-          input.disabled = true;
-          vals[f.id] = '';
-          input.value = '';
-        }
+        if (e.target.checked) { body.style.display = ''; input.disabled = false; input.focus(); }
+        else { body.style.display = 'none'; input.disabled = true; vals[f.id] = ''; input.value = ''; }
         renderPreview();
       });
-      const inp = g.querySelector(`#f-${f.id}`);
-      inp.addEventListener('input', e => { vals[f.id] = e.target.value; renderPreview(); });
+      g.querySelector(`#f-${f.id}`).addEventListener('input', e => { vals[f.id] = e.target.value; renderPreview(); });
 
-    // ── SELECT field ──
     } else if (f.type === 'select') {
-      const options = (f.options || []).map(o =>
-        `<option value="${o}" ${vals[f.id]===o?'selected':''}>${o}</option>`
-      ).join('');
       g.innerHTML = `
         <label class="field-label" for="f-${f.id}">${f.label}</label>
         <select id="f-${f.id}">
           <option value="">— Seleccioná —</option>
-          ${options}
+          ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
         </select>
-        ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}
-      `;
-      g.querySelector(`#f-${f.id}`).addEventListener('change', e => {
-        vals[f.id] = e.target.value;
-        renderPreview();
-      });
+        ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}`;
+      g.querySelector(`#f-${f.id}`).addEventListener('change', e => { vals[f.id] = e.target.value; renderPreview(); });
 
-    // ── REGULAR field ──
     } else {
       g.innerHTML = `
         <label class="field-label" for="f-${f.id}">${f.label}</label>
-        <input type="${f.type || 'text'}" id="f-${f.id}"
-          placeholder="${f.placeholder || ''}"
-          value=""
-          autocomplete="off"
-          ${f.min ? `min="${f.min}"` : ''} ${f.max ? `max="${f.max}"` : ''} ${f.id === 'descuento' ? 'maxlength="2"' : ''}
-        />
-        ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}
-      `;
-      const inp = g.querySelector(`#f-${f.id}`);
-      inp.addEventListener('input', e => {
+        <input type="${f.type||'text'}" id="f-${f.id}"
+          placeholder="${f.placeholder||''}" value="" autocomplete="off"
+          ${f.min ? `min="${f.min}"` : ''} ${f.max ? `max="${f.max}"` : ''}
+          ${f.id === 'descuento' ? 'maxlength="2"' : ''} />
+        ${f.hint ? `<div class="field-hint">${f.hint}</div>` : ''}`;
+      g.querySelector(`#f-${f.id}`).addEventListener('input', e => {
         let v = e.target.value;
         if (v !== '' && f.max && Number(v) > f.max) { v = String(f.max); e.target.value = v; }
         if (v !== '' && f.min && Number(v) < f.min) { v = String(f.min); e.target.value = v; }
         vals[f.id] = v;
         renderPreview();
-        if (Object.values(vals).some(v => v)) {
+        if (Object.values(vals).some(x => x)) {
           document.getElementById('step3').classList.add('active');
           document.getElementById('line2').classList.add('done');
         }
       });
     }
-
     c.appendChild(g);
   });
 }
 
-// ── Font pre-loading ─────────────────────────────────────────────────────────
-// We fetch Bebas Neue and store it as base64 so we can embed it in
-// downloaded SVGs and PNGs (external @import is blocked in sandboxed SVGs).
-let bebasFontBase64 = '';
-
-async function preloadBebasFont() {
-  try {
-    const fontRes = await fetch('assets/fonts/BebasNeue-Regular.woff2');
-    const buf = await fontRes.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    bytes.forEach(b => bin += String.fromCharCode(b));
-    bebasFontBase64 = btoa(bin);
-  } catch(e) {
-    console.warn('Could not load Bebas Neue font:', e);
-  }
-}
-
-// ── Apply all edits to SVG source ────────────────────────────────────────────
+// ── Apply edits to SVG ────────────────────────────────────────────────────────
 function applyEdits(src, embedFont = false) {
   const parser = new DOMParser();
-  const doc = parser.parseFromString(src, 'image/svg+xml');
+  const svgDoc = parser.parseFromString(src, 'image/svg+xml');
 
-  // Embed Bebas Neue as base64 @font-face for downloads
-  const styleEl = doc.querySelector('style');
-  if (styleEl && embedFont && bebasFontBase64) {
-    const fontFace = `@font-face {
-  font-family: 'Bebas Neue';
-  src: url('data:font/woff2;base64,${bebasFontBase64}') format('woff2');
-}\n`;
-    styleEl.textContent = fontFace + styleEl.textContent;
+  if (embedFont && bebasFontBase64) {
+    const styleEl = svgDoc.querySelector('style');
+    if (styleEl) {
+      styleEl.textContent = `@font-face{font-family:'Bebas Neue';src:url('data:font/woff2;base64,${bebasFontBase64}') format('woff2');}\n` + styleEl.textContent;
+    }
   }
 
-  // Hide unwanted fixed elements (the "+" signs)
   (config.hideSelectors || []).forEach(sel => {
-    doc.querySelectorAll(sel).forEach(el => {
-      el.setAttribute('visibility', 'hidden');
-    });
+    svgDoc.querySelectorAll(sel).forEach(el => el.setAttribute('visibility', 'hidden'));
   });
 
-  // Helper: set text + Bebas Neue on a selector
   function setField(selector, value) {
-    const tspan = doc.querySelector(selector);
+    const tspan = svgDoc.querySelector(selector);
     if (!tspan) return;
     tspan.textContent = value || '';
     if (value) {
       const textEl = tspan.closest('text') || tspan.parentElement;
-      if (textEl) {
-        textEl.setAttribute('style',
-          (textEl.getAttribute('style') || '') +
-          '; font-family: "Bebas Neue", sans-serif !important;'
-        );
-      }
+      if (textEl) textEl.setAttribute('style', (textEl.getAttribute('style')||'') + '; font-family: "Bebas Neue", sans-serif !important;');
     }
   }
 
-  // Standard fields (hasta, descuento)
   config.fields.forEach(f => {
-    if (f.type === 'cuotas' || f.id === 'beneficio2') return; // handled separately
+    if (f.type === 'cuotas' || f.id === 'beneficio2') return;
     if (!f.selector) return;
-    const value = (f.optional && !enabled[f.id]) ? '' : (vals[f.id] || '');
-    setField(f.selector, value);
+    setField(f.selector, (f.optional && !enabled[f.id]) ? '' : (vals[f.id] || ''));
   });
 
-  // Dynamic cuotas / beneficio2 positioning
-  const cuotasOn   = enabled['cuotas']    && vals['cuotas'];
-  const bene2Val   = (enabled['beneficio2'] && vals['beneficio2']) ? vals['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
-  const selCuotas  = config.selectorCuotas;    // .st11 tspan
-  const selBene2   = config.selectorBeneficio2; // .st8 tspan
+  const cuotasOn  = enabled['cuotas'] && vals['cuotas'];
+  const bene2Val  = (enabled['beneficio2'] && vals['beneficio2']) ? vals['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
 
   if (cuotasOn) {
-    // Cuotas activas → .st11 = cuotas, .st8 = beneficio2 (o default)
-    setField(selCuotas, `+ ${vals['cuotas']} CUOTAS SIN INTERES`);
-    setField(selBene2,  bene2Val);
+    setField(config.selectorCuotas,   `+ ${vals['cuotas']} CUOTAS SIN INTERES`);
+    setField(config.selectorBeneficio2, bene2Val);
   } else {
-    // Sin cuotas → beneficio2 (o default) sube a .st11, .st8 vacío
-    setField(selCuotas, bene2Val);
-    setField(selBene2,  '');
+    setField(config.selectorCuotas,    bene2Val);
+    setField(config.selectorBeneficio2, '');
   }
 
-  // Apply Bebas Neue to fixed elements (% OFF)
   (config.bebasSelectors || []).forEach(sel => {
-    doc.querySelectorAll(sel).forEach(el => {
-      el.setAttribute('style',
-        (el.getAttribute('style') || '') +
-        '; font-family: "Bebas Neue", sans-serif !important;'
-      );
+    svgDoc.querySelectorAll(sel).forEach(el => {
+      el.setAttribute('style', (el.getAttribute('style')||'') + '; font-family: "Bebas Neue", sans-serif !important;');
     });
   });
 
-  return new XMLSerializer().serializeToString(doc);
+  return new XMLSerializer().serializeToString(svgDoc);
 }
 
-// ── Preview (inline SVG — inherits page fonts) ───────────────────────────────
+// ── Preview ───────────────────────────────────────────────────────────────────
 function renderPreview() {
   const modified = applyEdits(svgText, false);
   const wrap = document.getElementById('previewWrap');
   wrap.innerHTML = modified;
   const svgEl = wrap.querySelector('svg');
-  if (svgEl) {
-    svgEl.style.width = '100%';
-    svgEl.style.height = 'auto';
-    svgEl.removeAttribute('width');
-    svgEl.removeAttribute('height');
-  }
+  if (svgEl) { svgEl.style.width = '100%'; svgEl.style.height = 'auto'; svgEl.removeAttribute('width'); svgEl.removeAttribute('height'); }
 }
 
-// ── Download SVG (with embedded font) ────────────────────────────────────────
-
-// ── Download PNG (render inline SVG via canvas) ───────────────────────────────
+// ── Download PNG ──────────────────────────────────────────────────────────────
 document.getElementById('btnPNG').addEventListener('click', () => {
-  // Bloqueo: el descuento es obligatorio
   if (!vals['descuento'] || Number(vals['descuento']) < 1) {
     toast('⚠ Completá el porcentaje de descuento para descargar');
-    document.getElementById('f-descuento').focus();
-    document.getElementById('f-descuento').style.borderColor = '#e05c2a';
-    setTimeout(() => document.getElementById('f-descuento').style.borderColor = '', 2500);
+    const inp = document.getElementById('f-descuento');
+    inp.focus(); inp.style.borderColor = '#e05c2a';
+    setTimeout(() => inp.style.borderColor = '', 2500);
     return;
   }
 
-  const svgEl = document.querySelector('#previewWrap svg');
-  if (!svgEl) { toast('Generá un preview primero'); return; }
-
-  const svgString = new XMLSerializer().serializeToString(svgEl);
-  const viewBox = svgEl.getAttribute('viewBox') || '0 0 600 768';
-  const [,, w, h] = viewBox.split(' ').map(Number);
-
-  // Re-inject with font-face embedded for canvas rendering
   const withFont = applyEdits(svgText, true);
   const blob = new Blob([withFont], { type: 'image/svg+xml' });
-  const url = URL.createObjectURL(blob);
+  const url  = URL.createObjectURL(blob);
+  const img  = new Image();
 
-  const img = new Image();
   img.onload = () => {
     const canvas = document.getElementById('exportCanvas');
+    const vb = document.querySelector('#previewWrap svg')?.getAttribute('viewBox') || '0 0 600 768';
+    const [,,w,h] = vb.split(' ').map(Number);
     const scale = 2;
     canvas.width  = (img.naturalWidth  || w) * scale;
     canvas.height = (img.naturalHeight || h) * scale;
@@ -435,8 +371,8 @@ document.getElementById('btnPNG').addEventListener('click', () => {
     URL.revokeObjectURL(url);
     canvas.toBlob(pngBlob => {
       const pu = URL.createObjectURL(pngBlob);
-      const a = document.createElement('a');
-      a.href = pu; a.download = `${templateId}-editado.png`; a.click();
+      const a  = document.createElement('a');
+      a.href = pu; a.download = `${config.name.replace(/\s+/g,'-')}.png`; a.click();
       URL.revokeObjectURL(pu);
       toast('PNG descargado ✓');
     }, 'image/png');

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — UA Promos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+    }
+    .login-card {
+      background: var(--white);
+      border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(13,27,62,.13);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .login-card img { height: 36px; margin-bottom: 1.5rem; }
+    .login-card h2 { font-size: 1.1rem; font-weight: 700; color: var(--dark-text); margin-bottom: 0.4rem; }
+    .login-card p { font-size: 13px; color: var(--gray-text); margin-bottom: 1.5rem; }
+    .login-card input {
+      width: 100%; padding: 11px 14px;
+      border: 1.5px solid var(--border); border-radius: 7px;
+      font-size: 1rem; font-family: inherit; color: var(--dark-text);
+      outline: none; margin-bottom: 1rem; text-align: center;
+      letter-spacing: 0.2em;
+    }
+    .login-card input:focus { border-color: var(--cyan-2); }
+    .login-error { color: #e05c2a; font-size: 12px; margin-top: -6px; margin-bottom: 10px; }
+
+    .admin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px,1fr));
+      gap: 1.25rem;
+    }
+    .design-card {
+      background: var(--white);
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      transition: transform .2s;
+    }
+    .design-card:hover { transform: translateY(-2px); }
+    .design-thumb {
+      width: 100%; height: 160px;
+      object-fit: cover; display: block;
+      background: #1a2a5e;
+    }
+    .design-thumb-placeholder {
+      width: 100%; height: 160px;
+      background: linear-gradient(135deg, var(--navy), var(--teal-dark));
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,.3); font-size: 2rem;
+    }
+    .design-info {
+      padding: 12px 14px 8px;
+    }
+    .design-name {
+      font-size: 13px; font-weight: 700;
+      color: var(--dark-text); margin-bottom: 10px;
+    }
+    .design-actions {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .btn-action {
+      flex: 1; padding: 6px 8px;
+      border: 1.5px solid var(--border); border-radius: 6px;
+      background: var(--white); color: var(--dark-text);
+      font-size: 11px; font-weight: 600; font-family: inherit;
+      cursor: pointer; transition: all .2s; text-align: center;
+      white-space: nowrap;
+    }
+    .btn-action:hover { border-color: var(--cyan-2); color: var(--cyan-2); }
+    .btn-action.danger:hover { border-color: #e05c2a; color: #e05c2a; }
+
+    .btn-add-design {
+      background: linear-gradient(135deg, var(--navy), var(--teal-dark));
+      color: var(--white); border: none; border-radius: 10px;
+      padding: 0; cursor: pointer; font-family: inherit;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; min-height: 240px;
+      transition: opacity .2s; font-size: 13px; font-weight: 600;
+    }
+    .btn-add-design:hover { opacity: .85; }
+    .btn-add-design span.icon { font-size: 2rem; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(13,27,62,.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; padding: 1rem;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: var(--white);
+      border-radius: 14px;
+      padding: 2rem;
+      width: 100%; max-width: 440px;
+      box-shadow: 0 20px 60px rgba(13,27,62,.2);
+    }
+    .modal h3 {
+      font-size: 1rem; font-weight: 700;
+      color: var(--dark-text); margin-bottom: 1.25rem;
+    }
+    .modal-field { margin-bottom: 1rem; }
+    .modal-field label {
+      display: block; font-size: 11px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--dark-text); margin-bottom: 6px;
+    }
+    .modal-field input {
+      width: 100%; padding: 10px 14px;
+      border: 1.5px solid var(--border); border-radius: 7px;
+      font-size: 14px; font-family: inherit; color: var(--dark-text); outline: none;
+    }
+    .modal-field input:focus { border-color: var(--cyan-2); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 1.5rem; }
+    .modal-actions button { flex: 1; }
+
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 8px;
+      padding: 1.5rem; text-align: center; cursor: pointer;
+      transition: all .2s;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--cyan-2); background: rgba(0,180,216,.04);
+    }
+    .upload-zone p { font-size: 13px; color: var(--gray-text); }
+    .upload-preview {
+      width: 100%; height: 140px; object-fit: cover;
+      border-radius: 6px; margin-top: 8px; display: none;
+    }
+    .upload-progress {
+      height: 4px; background: var(--border); border-radius: 2px;
+      margin-top: 8px; overflow: hidden; display: none;
+    }
+    .upload-progress-bar {
+      height: 100%; background: var(--cyan-2);
+      width: 0; transition: width .3s;
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <img src="assets/logo-ua-white.png" alt="UA" style="filter:invert(1) sepia(1) saturate(2) hue-rotate(180deg);height:32px;" />
+    <h2>Panel de Administración</h2>
+    <p>Ingresá la contraseña para continuar</p>
+    <input type="password" id="passInput" placeholder="••••" maxlength="6" />
+    <div class="login-error hidden" id="loginError">Contraseña incorrecta</div>
+    <button class="btn-primary" onclick="doLogin()">Ingresar</button>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanel" style="display:none;">
+
+<header class="header">
+  <div class="header-left">
+    <img src="assets/logo-ua-white.png" alt="Universal Assistance" style="height:32px;width:auto;" />
+  </div>
+  <div class="header-right">
+    <span class="header-email" style="color:rgba(255,255,255,.5);font-size:11px;text-transform:uppercase;letter-spacing:.08em;">Admin</span>
+    <button class="btn-header" onclick="logout()">Cerrar sesión</button>
+    <a href="index.html" class="btn-header" target="_blank">Ver galería ↗</a>
+  </div>
+</header>
+
+<div class="subnav">
+  <div class="subnav-label">
+    <span class="subnav-dot"></span>
+    Gestión de diseños
+  </div>
+</div>
+
+<div class="container">
+  <div class="hero-card" style="margin-bottom:2rem;">
+    <div>
+      <h1>Panel de Administración</h1>
+      <p>Agregá, editá, duplicá o eliminá los diseños que ven los equipos comerciales.</p>
+    </div>
+    <span class="hero-card-tag">Admin</span>
+  </div>
+
+  <p class="section-label">Diseños disponibles</p>
+  <div class="admin-grid" id="adminGrid">
+    <div class="skeleton" style="height:240px;border-radius:10px;"></div>
+    <div class="skeleton" style="height:240px;border-radius:10px;"></div>
+  </div>
+</div>
+
+</div>
+
+<!-- MODAL NUEVO / EDITAR DISEÑO -->
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">Nuevo diseño</h3>
+
+    <div class="modal-field">
+      <label>Nombre del diseño</label>
+      <input type="text" id="designName" placeholder="Ej: Promo Verano México" />
+    </div>
+
+    <div class="modal-field" id="imageFieldWrap">
+      <label>Imagen de fondo</label>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+        <div style="font-size:1.75rem;color:var(--cyan-2);margin-bottom:6px;">↑</div>
+        <p>Hacé click o arrastrá una imagen<br><small>JPG / PNG — máx 5MB</small></p>
+      </div>
+      <img id="uploadPreview" class="upload-preview" />
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-progress-bar" id="uploadBar"></div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none;" onchange="onFileSelected(event)" />
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" id="modalSaveBtn" onclick="saveDesign()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"><span class="toast-icon">✓</span><span id="toastMsg"></span></div>
+
+<script type="module">
+import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, getDocs, addDoc,
+         deleteDoc, doc, updateDoc, serverTimestamp,
+         orderBy, query }                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getStorage, ref, uploadBytesResumable,
+         getDownloadURL, deleteObject }               from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const storage = getStorage(app);
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+window.doLogin = function() {
+  const val = document.getElementById('passInput').value;
+  if (val === '4896') {
+    sessionStorage.setItem('ua-admin', '1');
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('adminPanel').style.display = '';
+    loadDesigns();
+  } else {
+    document.getElementById('loginError').classList.remove('hidden');
+  }
+};
+document.getElementById('passInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') window.doLogin();
+});
+window.logout = function() {
+  sessionStorage.removeItem('ua-admin');
+  location.reload();
+};
+if (sessionStorage.getItem('ua-admin') === '1') {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('adminPanel').style.display = '';
+  loadDesigns();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  t.style.background = isError ? '#e05c2a' : '';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Load designs ──────────────────────────────────────────────────────────────
+let designs = [];
+
+async function loadDesigns() {
+  const grid = document.getElementById('adminGrid');
+  try {
+    const q = query(collection(db, 'designs'), orderBy('createdAt', 'asc'));
+    const snap = await getDocs(q);
+    designs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderGrid();
+  } catch(e) {
+    grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;">Error al cargar. Revisá la consola.</p>`;
+    console.error(e);
+  }
+}
+
+function renderGrid() {
+  const grid = document.getElementById('adminGrid');
+  grid.innerHTML = '';
+
+  // Botón agregar
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-add-design';
+  addBtn.innerHTML = `<span class="icon">+</span><span>Nuevo diseño</span>`;
+  addBtn.onclick = () => openModal();
+  grid.appendChild(addBtn);
+
+  designs.forEach(d => {
+    const card = document.createElement('div');
+    card.className = 'design-card';
+    card.innerHTML = `
+      ${d.backgroundUrl
+        ? `<img class="design-thumb" src="${d.backgroundUrl}" alt="${d.name}" />`
+        : `<div class="design-thumb-placeholder">🖼</div>`}
+      <div class="design-info">
+        <div class="design-name">${d.name}</div>
+        <div class="design-actions">
+          <button class="btn-action" onclick="editDesign('${d.id}')">✏ Editar</button>
+          <button class="btn-action" onclick="duplicateDesign('${d.id}')">⧉ Duplicar</button>
+          <button class="btn-action danger" onclick="deleteDesign('${d.id}', '${d.storagePath || ''}')">🗑 Eliminar</button>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+let editingId = null;
+let uploadedUrl = null;
+let uploadedPath = null;
+
+window.openModal = function(id = null) {
+  editingId = id;
+  uploadedUrl = null;
+  uploadedPath = null;
+  const design = id ? designs.find(d => d.id === id) : null;
+
+  document.getElementById('modalTitle').textContent = id ? 'Editar diseño' : 'Nuevo diseño';
+  document.getElementById('designName').value = design ? design.name : '';
+  document.getElementById('uploadPreview').style.display = 'none';
+  document.getElementById('uploadProgress').style.display = 'none';
+  document.getElementById('uploadBar').style.width = '0';
+  document.getElementById('imageFieldWrap').style.display = id ? 'none' : '';
+
+  if (design?.backgroundUrl) {
+    uploadedUrl = design.backgroundUrl;
+    uploadedPath = design.storagePath || null;
+  }
+
+  document.getElementById('modalOverlay').classList.remove('hidden');
+  document.getElementById('designName').focus();
+};
+window.editDesign = window.openModal;
+
+window.closeModal = function() {
+  document.getElementById('modalOverlay').classList.add('hidden');
+};
+
+// ── File upload ───────────────────────────────────────────────────────────────
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+window.onFileSelected = function(e) {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+};
+
+function handleFile(file) {
+  if (file.size > 5 * 1024 * 1024) { toast('La imagen no puede superar 5MB', true); return; }
+
+  // Preview
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('uploadPreview');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+
+  // Upload to Firebase Storage
+  const path = `backgrounds/${Date.now()}-${file.name.replace(/\s/g,'_')}`;
+  const storageRef = ref(storage, path);
+  const task = uploadBytesResumable(storageRef, file);
+
+  document.getElementById('uploadProgress').style.display = '';
+  document.getElementById('modalSaveBtn').disabled = true;
+
+  task.on('state_changed',
+    snap => {
+      const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+      document.getElementById('uploadBar').style.width = pct + '%';
+    },
+    err => { toast('Error subiendo imagen', true); console.error(err); },
+    async () => {
+      uploadedUrl = await getDownloadURL(task.snapshot.ref);
+      uploadedPath = path;
+      document.getElementById('modalSaveBtn').disabled = false;
+      toast('Imagen subida ✓');
+    }
+  );
+}
+
+// ── Save design ───────────────────────────────────────────────────────────────
+window.saveDesign = async function() {
+  const name = document.getElementById('designName').value.trim();
+  if (!name) { toast('Ponele un nombre al diseño', true); return; }
+
+  const btn = document.getElementById('modalSaveBtn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+
+  try {
+    if (editingId) {
+      await updateDoc(doc(db, 'designs', editingId), { name });
+      toast('Diseño actualizado ✓');
+    } else {
+      if (!uploadedUrl) { toast('Subí una imagen primero', true); btn.disabled = false; btn.textContent = 'Guardar'; return; }
+      await addDoc(collection(db, 'designs'), {
+        name,
+        backgroundUrl: uploadedUrl,
+        storagePath: uploadedPath,
+        fields: DEFAULT_FIELDS,
+        ...SVG_CONFIG,
+        active: true,
+        createdAt: serverTimestamp()
+      });
+      toast('Diseño creado ✓');
+    }
+    closeModal();
+    await loadDesigns();
+  } catch(e) {
+    toast('Error al guardar', true); console.error(e);
+  }
+  btn.disabled = false; btn.textContent = 'Guardar';
+};
+
+// ── Duplicate design ──────────────────────────────────────────────────────────
+window.duplicateDesign = async function(id) {
+  const d = designs.find(x => x.id === id);
+  if (!d) return;
+  try {
+    await addDoc(collection(db, 'designs'), {
+      name: d.name + ' (copia)',
+      backgroundUrl: d.backgroundUrl,
+      storagePath: d.storagePath || null,
+      fields: d.fields,
+      bebasSelectors: d.bebasSelectors,
+      hideSelectors: d.hideSelectors,
+      selectorCuotas: d.selectorCuotas,
+      selectorBeneficio2: d.selectorBeneficio2,
+      active: true,
+      createdAt: serverTimestamp()
+    });
+    toast('Diseño duplicado ✓');
+    await loadDesigns();
+  } catch(e) { toast('Error al duplicar', true); console.error(e); }
+};
+
+// ── Delete design ─────────────────────────────────────────────────────────────
+window.deleteDesign = async function(id, storagePath) {
+  if (!confirm('¿Eliminás este diseño? Esta acción no se puede deshacer.')) return;
+  try {
+    await deleteDoc(doc(db, 'designs', id));
+    if (storagePath) {
+      try { await deleteObject(ref(storage, storagePath)); } catch(e) {}
+    }
+    toast('Diseño eliminado');
+    await loadDesigns();
+  } catch(e) { toast('Error al eliminar', true); console.error(e); }
+};
+</script>
+</body>
+</html>
