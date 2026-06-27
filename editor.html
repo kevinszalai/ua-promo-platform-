@@ -287,12 +287,12 @@ function renderPreview() {
   wrap.innerHTML = applyEdits(svgText, false);
   const svgEl = wrap.querySelector('svg');
   if(svgEl){
-    svgEl.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0;';
-    svgEl.setAttribute('overflow','hidden');
     svgEl.removeAttribute('width');
     svgEl.removeAttribute('height');
+    svgEl.style.width = '100%';
+    svgEl.style.height = 'auto';
+    svgEl.style.display = 'block';
   }
-  wrap.style.position = 'relative';
 }
 
 document.getElementById('btnPNG').addEventListener('click', async () => {
