@@ -73,37 +73,40 @@ import { firebaseConfig }                        from './js/firebase-config.js';
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
+function addCard(grid, thumb, name, href) {
+  const div = document.createElement('div');
+  div.className = 'template-thumb';
+  div.innerHTML = `${thumb}<div class="template-thumb-label">${name}</div>`;
+  div.addEventListener('click', () => { location.href = href; });
+  grid.appendChild(div);
+}
+
 async function loadDesigns() {
   const grid = document.getElementById('templateGrid');
+  grid.innerHTML = '';
+
+  // 1. Plantillas base locales (catalog.json)
+  try {
+    const res = await fetch('templates/catalog.json');
+    const catalog = await res.json();
+    catalog.forEach(t => {
+      const thumb = `<img src="templates/promo-bg.jpg" alt="${t.name}" loading="lazy" />`;
+      addCard(grid, thumb, t.name, `editor.html?local=${encodeURIComponent(t.id)}`);
+    });
+  } catch(e) {}
+
+  // 2. Diseños de Firebase
   try {
     const q = query(collection(db, 'designs'), orderBy('createdAt', 'asc'));
     const snap = await getDocs(q);
-    const designs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    if (designs.length === 0) {
-      grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;grid-column:1/-1;">Todavía no hay diseños. El administrador debe agregar uno.</p>`;
-      return;
-    }
-
-    grid.innerHTML = '';
-    designs.forEach(d => {
-      const div = document.createElement('div');
-      div.className = 'template-thumb';
-      div.innerHTML = `
-        ${d.backgroundUrl
-          ? `<img src="${d.backgroundUrl}" alt="${d.name}" loading="lazy" />`
-          : `<div style="height:160px;background:linear-gradient(135deg,#0d1b3e,#0a3d52);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.2);font-size:2rem;">🖼</div>`}
-        <div class="template-thumb-label">${d.name}</div>
-      `;
-      div.addEventListener('click', () => {
-        location.href = `editor.html?id=${encodeURIComponent(d.id)}`;
-      });
-      grid.appendChild(div);
+    snap.docs.forEach(d => {
+      const data = d.data();
+      const thumb = data.backgroundUrl
+        ? `<img src="${data.backgroundUrl}" alt="${data.name}" loading="lazy" />`
+        : `<div style="height:160px;background:linear-gradient(135deg,#0d1b3e,#0a3d52);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.2);font-size:2rem;">🖼</div>`;
+      addCard(grid, thumb, data.name, `editor.html?id=${encodeURIComponent(d.id)}`);
     });
-  } catch(e) {
-    grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;">Error al cargar los diseños.</p>`;
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 loadDesigns();
 </script>

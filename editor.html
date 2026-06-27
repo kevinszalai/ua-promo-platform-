@@ -115,6 +115,7 @@ const db  = getFirestore(app);
 
 const params     = new URLSearchParams(location.search);
 const designId   = params.get('id');
+const localId    = params.get('local');
 let svgText      = '';
 let config       = null;
 let vals         = {};
@@ -128,13 +129,22 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ── Load design from Firestore + SVG template ─────────────────────────────────
+// ── Load design from Firestore or catalog.json ────────────────────────────────
 async function init() {
-  if (!designId) { location.href = 'index.html'; return; }
+  if (!designId && !localId) { location.href = 'index.html'; return; }
 
-  const snap = await getDoc(doc(db, 'designs', designId));
-  if (!snap.exists()) { location.href = 'index.html'; return; }
-  config = { id: snap.id, ...snap.data() };
+  if (localId) {
+    // Load from local catalog.json
+    const res     = await fetch('templates/catalog.json');
+    const catalog = await res.json();
+    config = catalog.find(t => t.id === localId);
+    if (!config) { location.href = 'index.html'; return; }
+  } else {
+    // Load from Firestore
+    const snap = await getDoc(doc(db, 'designs', designId));
+    if (!snap.exists()) { location.href = 'index.html'; return; }
+    config = { id: snap.id, ...snap.data() };
+  }
 
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
@@ -143,24 +153,21 @@ async function init() {
   const svgRes = await fetch('templates/promo-mx.svg');
   const rawSvg = await svgRes.text();
 
-  // Fetch background image from Firebase and embed as base64
-  if (config.backgroundUrl) {
-    try {
-      const imgRes  = await fetch(config.backgroundUrl);
-      const buf     = await imgRes.arrayBuffer();
-      const bytes   = new Uint8Array(buf);
-      let bin = '';
-      bytes.forEach(b => bin += String.fromCharCode(b));
-      const b64 = btoa(bin);
-      const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-      svgText = rawSvg.replace(
-        /(<image[^>]*xlink:href=")[^"]*(")/,
-        `$1data:${mime};base64,${b64}$2`
-      );
-    } catch(e) {
-      svgText = rawSvg;
-    }
-  } else {
+  // Fetch background image (Firebase or local default) and embed as base64
+  const bgUrl = config.backgroundUrl || 'templates/promo-bg.jpg';
+  try {
+    const imgRes = await fetch(bgUrl);
+    const buf    = await imgRes.arrayBuffer();
+    const bytes  = new Uint8Array(buf);
+    let bin = '';
+    bytes.forEach(b => bin += String.fromCharCode(b));
+    const b64  = btoa(bin);
+    const mime = imgRes.headers.get('content-type') || 'image/jpeg';
+    svgText = rawSvg.replace(
+      /(<image[^>]*xlink:href=")[^"]*(")/,
+      `$1data:${mime};base64,${b64}$2`
+    );
+  } catch(e) {
     svgText = rawSvg;
   }
 
