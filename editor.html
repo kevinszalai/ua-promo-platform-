@@ -463,7 +463,7 @@ async function submitForApproval() {
 
     // Send email via EmailJS
     const approvalLink = `${location.origin}${location.pathname.replace('editor.html','approve.html')}?sid=${submissionId}`;
-    await emailjs.send('service_10n20cs', 'template_k0s24p2', {
+    await emailjs.send('service_utziaf1', 'template_k0s24p2', {
       to_email:      approverEmail,
       country,
       design_name:   config.name,
