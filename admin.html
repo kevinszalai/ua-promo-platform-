@@ -103,6 +103,21 @@
     </div>
     <span class="hero-card-tag">Admin</span>
   </div>
+  <p class="section-label">Configuración global</p>
+  <div class="card" style="margin-bottom:2rem;padding:1.25rem 1.5rem;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Opciones de encabezado</div>
+    <div id="optionChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:32px;"></div>
+    <div style="display:flex;gap:6px;">
+      <input type="text" id="newOptionInput" placeholder="Nueva opción..." style="flex:1;max-width:260px;" maxlength="40"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addHeaderOption();}" />
+      <button type="button" class="btn-secondary" onclick="addHeaderOption()">+ Agregar</button>
+    </div>
+    <div style="margin-top:10px;">
+      <button class="btn-primary" onclick="saveHeaderOptions()" style="font-size:13px;padding:6px 18px;">Guardar opciones</button>
+      <span id="optionsSavedMsg" style="display:none;font-size:12px;color:var(--cyan-2);margin-left:10px;">✓ Guardado</span>
+    </div>
+  </div>
+
   <p class="section-label">Diseños publicados</p>
   <div class="admin-grid" id="adminGrid">
     <div class="skeleton" style="height:240px;border-radius:10px;"></div>
@@ -163,8 +178,8 @@
 <script type="module">
 import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, getDocs, addDoc,
-         deleteDoc, doc, updateDoc, serverTimestamp,
-         orderBy, query }                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+         deleteDoc, doc, getDoc, setDoc, updateDoc,
+         serverTimestamp, orderBy, query }            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
@@ -196,8 +211,7 @@ document.getElementById('passInput').addEventListener('keydown', e => { if(e.key
 window.logout = function() { sessionStorage.removeItem('ua-admin'); location.reload(); };
 
 async function start() {
-  await loadSvgTemplate();
-  await loadDesigns();
+  await Promise.all([loadSvgTemplate(), loadHeaderOptions(), loadDesigns()]);
 }
 if (sessionStorage.getItem('ua-admin')==='1') {
   document.getElementById('loginWrap').style.display = 'none';
@@ -286,7 +300,7 @@ function compressImage(file, maxPx, quality) {
 // ── SVG preview helper ────────────────────────────────────────────────────────
 function injectBgIntoPreview(dataUrl) {
   const svgText = svgTemplate.replace(
-    /(<image[^>]*)(xlink:href="[^"]*")/g,
+    /(<image[^>]*)(xlink:href="[^"]*")/,
     `$1xlink:href="${dataUrl}" href="${dataUrl}"`
   );
   const wrap = document.getElementById('modalPreviewWrap');
@@ -319,6 +333,56 @@ function bufToBase64(buf) {
 }
 
 // ── Modal open ────────────────────────────────────────────────────────────────
+// ── Global header options ─────────────────────────────────────────────────────
+let headerOptions = [];
+
+async function loadHeaderOptions() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'global'));
+    const opts = snap.exists() ? snap.data().headerOptions : null;
+    headerOptions = opts || DEFAULT_FIELDS.find(f=>f.id==='hasta')?.options || [];
+  } catch(e) {
+    headerOptions = DEFAULT_FIELDS.find(f=>f.id==='hasta')?.options || [];
+  }
+  renderOptionChips();
+}
+
+function renderOptionChips() {
+  const container = document.getElementById('optionChips');
+  container.innerHTML = '';
+  headerOptions.forEach((opt, i) => {
+    const chip = document.createElement('span');
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:var(--surface-2,#1e2d5a);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12px;';
+    chip.innerHTML = `${opt} <button type="button" onclick="removeHeaderOption(${i})" style="background:none;border:none;color:var(--gray-text);cursor:pointer;font-size:14px;line-height:1;padding:0;">×</button>`;
+    container.appendChild(chip);
+  });
+}
+
+window.addHeaderOption = function() {
+  const input = document.getElementById('newOptionInput');
+  const val = input.value.trim();
+  if (!val) return;
+  if (headerOptions.includes(val)) { input.value=''; return; }
+  headerOptions.push(val);
+  renderOptionChips();
+  input.value = '';
+  input.focus();
+};
+
+window.removeHeaderOption = function(i) {
+  headerOptions.splice(i, 1);
+  renderOptionChips();
+};
+
+window.saveHeaderOptions = async function() {
+  try {
+    await setDoc(doc(db, 'config', 'global'), { headerOptions }, { merge: true });
+    const msg = document.getElementById('optionsSavedMsg');
+    msg.style.display = 'inline';
+    setTimeout(() => msg.style.display = 'none', 2500);
+  } catch(e) { toast('Error al guardar opciones', true); }
+};
+
 window.openModal = async function(id) {
   editingId    = id;
   uploadedData = null;
