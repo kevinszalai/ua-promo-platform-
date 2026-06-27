@@ -73,44 +73,31 @@ import { firebaseConfig }                        from './js/firebase-config.js';
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 
-function addCard(grid, thumb, name, href) {
-  const div = document.createElement('div');
-  div.className = 'template-thumb';
-  div.innerHTML = `${thumb}<div class="template-thumb-label">${name}</div>`;
-  div.addEventListener('click', () => { location.href = href; });
-  grid.appendChild(div);
-}
-
 async function loadDesigns() {
   const grid = document.getElementById('templateGrid');
-  grid.innerHTML = '';
-
-  // 1. Plantilla base local (siempre visible)
   try {
-    const res     = await fetch('templates/catalog.json');
-    const catalog = await res.json();
-    catalog.forEach(t => {
-      addCard(grid,
-        `<img src="templates/promo-bg.jpg" alt="${t.name}" loading="lazy" />`,
-        t.name,
-        `editor.html?local=${encodeURIComponent(t.id)}`
-      );
-    });
-  } catch(e) {}
-
-  // 2. Diseños adicionales desde Firebase
-  try {
-    const q = query(collection(db, 'designs'), orderBy('createdAt', 'asc'));
+    const q    = query(collection(db, 'designs'), orderBy('createdAt', 'asc'));
     const snap = await getDocs(q);
-    snap.docs.forEach(d => {
+    const active = snap.docs.filter(d => d.data().active !== false);
+    if (active.length === 0) {
+      grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;grid-column:1/-1;">No hay diseños disponibles todavía.</p>`;
+      return;
+    }
+    grid.innerHTML = '';
+    active.forEach(d => {
       const data = d.data();
-      addCard(grid,
-        `<img src="${data.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${data.name}" loading="lazy" />`,
-        data.name,
-        `editor.html?id=${encodeURIComponent(d.id)}`
-      );
+      const div  = document.createElement('div');
+      div.className = 'template-thumb';
+      div.innerHTML = `
+        <img src="${data.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${data.name}" loading="lazy" />
+        <div class="template-thumb-label">${data.name}</div>`;
+      div.addEventListener('click', () => { location.href = `editor.html?id=${encodeURIComponent(d.id)}`; });
+      grid.appendChild(div);
     });
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;">Error al cargar los diseños.</p>`;
+    console.error(e);
+  }
 }
 loadDesigns();
 </script>

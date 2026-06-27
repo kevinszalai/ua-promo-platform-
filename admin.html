@@ -246,12 +246,16 @@ function renderGrid() {
     const card = document.createElement('div');
     card.className = 'design-card';
     card.innerHTML = `
-      <img class="design-thumb" src="${d.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${d.name}" />
+      <div style="position:relative;">
+        <img class="design-thumb" src="${d.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${d.name}" style="${d.active===false?'opacity:.4;':''}" />
+        ${d.active===false ? '<div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:.06em;">OCULTO</div>' : ''}
+      </div>
       <div class="design-info">
         <div class="design-name">${d.name}</div>
         <div class="design-actions">
           <button class="btn-action" onclick="openModal('${d.id}')">✏ Editar</button>
           <button class="btn-action" onclick="duplicateDesign('${d.id}')">⧉ Duplicar</button>
+          <button class="btn-action ${d.active===false?'':'danger'}" onclick="toggleDesign('${d.id}',${d.active===false})">${d.active===false?'👁 Publicar':'⊘ Ocultar'}</button>
           <button class="btn-action danger" onclick="deleteDesign('${d.id}','${d.storagePath||''}')">🗑 Eliminar</button>
         </div>
       </div>`;
@@ -398,6 +402,15 @@ window.saveDesign = async function() {
   } catch(e) { toast('Error al guardar', true); console.error(e); }
 
   btn.disabled=false; btn.textContent='Guardar';
+};
+
+// ── Toggle visible ───────────────────────────────────────────────────────────
+window.toggleDesign = async function(id, makeActive) {
+  try {
+    await updateDoc(doc(db,'designs',id), { active: makeActive });
+    toast(makeActive ? 'Diseño publicado ✓' : 'Diseño ocultado');
+    await loadDesigns();
+  } catch(e) { toast('Error', true); }
 };
 
 // ── Duplicate ─────────────────────────────────────────────────────────────────

@@ -106,8 +106,8 @@
 <canvas id="exportCanvas" style="display:none;"></canvas>
 
 <script>
-const params     = new URLSearchParams(location.search);
-const templateId = params.get('id') || params.get('local');
+const params   = new URLSearchParams(location.search);
+const designId = params.get('id');
 let svgText = '';
 let config  = null;
 let vals    = {};
@@ -121,34 +121,30 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+// Firebase imports via module script below handles DB
+// We use a global promise to get the design doc
 async function init() {
-  if (!templateId) { location.href = 'index.html'; return; }
+  if (!designId) { location.href = 'index.html'; return; }
 
-  const res     = await fetch('templates/catalog.json');
-  const catalog = await res.json();
-  config = catalog.find(t => t.id === templateId);
-  if (!config) { location.href = 'index.html'; return; }
+  // Load design from Firebase
+  const { initializeApp }     = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const { getFirestore, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+  const { firebaseConfig }    = await import('./js/firebase-config.js');
+  const app  = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
+  const snap = await getDoc(doc(db, 'designs', designId));
+  if (!snap.exists()) { location.href = 'index.html'; return; }
+  config = { id: snap.id, ...snap.data() };
 
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
 
-  const svgRes = await fetch(config.file);
+  const svgRes = await fetch('templates/promo-mx.svg');
   const rawSvg = await svgRes.text();
 
-  // Inject background image as base64 so canvas export works
+  // For preview: inject background URL directly (fast)
   const bgUrl = config.backgroundUrl || 'templates/promo-bg.jpg';
-  try {
-    const imgRes = await fetch(bgUrl);
-    const buf    = await imgRes.arrayBuffer();
-    const bytes  = new Uint8Array(buf);
-    let bin = '';
-    bytes.forEach(b => bin += String.fromCharCode(b));
-    const b64  = btoa(bin);
-    const mime = imgRes.headers.get('content-type') || 'image/jpeg';
-    svgText = rawSvg.replace(/(<image[^>]*xlink:href=")[^"]*("/), `$1data:${mime};base64,${b64}$2`);
-  } catch(e) {
-    svgText = rawSvg;
-  }
+  svgText = rawSvg.replace(/(<image[^>]*xlink:href=")[^"]*(")/,  `$1${bgUrl}$2`);
 
   config.fields.forEach(f => {
     vals[f.id]    = '';
@@ -331,7 +327,7 @@ function renderPreview() {
   }
 }
 
-document.getElementById('btnPNG').addEventListener('click', () => {
+document.getElementById('btnPNG').addEventListener('click', async () => {
   if (!vals['descuento'] || Number(vals['descuento']) < 1) {
     toast('⚠ Completá el porcentaje de descuento para descargar');
     const inp = document.getElementById('f-descuento');
@@ -340,7 +336,18 @@ document.getElementById('btnPNG').addEventListener('click', () => {
     return;
   }
 
-  const withFont = applyEdits(svgText, true);
+  // Embed background as base64 for canvas export
+  const bgUrl = config.backgroundUrl || 'templates/promo-bg.jpg';
+  let svgForExport = svgText;
+  try {
+    const imgRes = await fetch(bgUrl);
+    const buf    = await imgRes.arrayBuffer();
+    const b64    = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const mime   = imgRes.headers.get('content-type') || 'image/jpeg';
+    svgForExport = svgText.replace(bgUrl, `data:${mime};base64,${b64}`);
+  } catch(e) { console.warn('bg embed error', e); }
+
+  const withFont = applyEdits(svgForExport, true);
   const blob = new Blob([withFont], { type: 'image/svg+xml' });
   const url  = URL.createObjectURL(blob);
   const img  = new Image();
