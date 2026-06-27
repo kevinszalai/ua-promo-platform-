@@ -286,9 +286,9 @@ function renderFields() {
         const body=document.getElementById(`body-${f.id}`), sel=document.getElementById(`f-${f.id}`);
         if(e.target.checked){body.style.display='';sel.disabled=false;vals[f.id]=parseInt(sel.value);}
         else{body.style.display='none';sel.disabled=true;vals[f.id]='';}
-        renderPreview();
+        onFieldModified(); renderPreview();
       });
-      g.querySelector(`#f-${f.id}`).addEventListener('change', e=>{vals[f.id]=parseInt(e.target.value);renderPreview();});
+      g.querySelector(`#f-${f.id}`).addEventListener('change', e=>{vals[f.id]=parseInt(e.target.value);onFieldModified();renderPreview();});
       if(!vals[f.id]&&isOn) vals[f.id]=3;
 
     } else if (f.optional) {
@@ -311,13 +311,13 @@ function renderFields() {
         const body=document.getElementById(`body-${f.id}`),input=document.getElementById(`f-${f.id}`);
         if(e.target.checked){body.style.display='';input.disabled=false;input.focus();}
         else{body.style.display='none';input.disabled=true;vals[f.id]='';input.value='';}
-        renderPreview();
+        onFieldModified(); renderPreview();
       });
       g.querySelector(`#f-${f.id}`).addEventListener('input', e=>{
         vals[f.id]=e.target.value;
         const counter=document.getElementById(`counter-${f.id}`);
         if(counter) counter.textContent=`${e.target.value.length} / 40`;
-        renderPreview();
+        onFieldModified(); renderPreview();
       });
 
     } else if (f.type === 'select') {
@@ -328,7 +328,7 @@ function renderFields() {
           ${(f.options||[]).map(o=>`<option value="${o}">${o}</option>`).join('')}
         </select>
         ${f.hint?`<div class="field-hint">${f.hint}</div>`:''}`;
-      g.querySelector(`#f-${f.id}`).addEventListener('change', e=>{vals[f.id]=e.target.value;renderPreview();});
+      g.querySelector(`#f-${f.id}`).addEventListener('change', e=>{vals[f.id]=e.target.value;onFieldModified();renderPreview();});
 
     } else {
       g.innerHTML = `
@@ -341,7 +341,7 @@ function renderFields() {
         let v=e.target.value;
         if(v!==''&&f.max&&Number(v)>f.max){v=String(f.max);e.target.value=v;}
         if(v!==''&&f.min&&Number(v)<f.min){v=String(f.min);e.target.value=v;}
-        vals[f.id]=v; renderPreview();
+        vals[f.id]=v; onFieldModified(); renderPreview();
         if(Object.values(vals).some(x=>x)){document.getElementById('step3').classList.add('active');document.getElementById('line2').classList.add('done');}
       });
     }
@@ -372,6 +372,22 @@ function applyEdits(src, embedFont=false) {
   else{setField(config.selectorCuotas,bene2Val);setField(config.selectorBeneficio2,'');}
   (config.bebasSelectors||[]).forEach(sel=>doc2.querySelectorAll(sel).forEach(el=>el.setAttribute('style',(el.getAttribute('style')||'')+'; font-family: "Bebas Neue", sans-serif !important;')));
   return new XMLSerializer().serializeToString(doc2);
+}
+
+function onFieldModified() {
+  // If there's an active submission, reset approval state so they must re-submit
+  if (submissionId) {
+    if (unsubListener) { unsubListener(); unsubListener = null; }
+    submissionId   = null;
+    approvalStatus = null;
+    const newUrl = new URL(location.href);
+    newUrl.searchParams.delete('sid');
+    history.replaceState({}, '', newUrl);
+    document.getElementById('approvalStatusBox').style.display = 'none';
+    document.getElementById('submissionForm').style.display    = 'block';
+    document.getElementById('btnSubmit').disabled = false;
+    document.getElementById('btnSubmit').textContent = '📤 Enviar para verificación';
+  }
 }
 
 function renderPreview() {
