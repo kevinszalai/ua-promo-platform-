@@ -118,6 +118,21 @@
     </div>
   </div>
 
+  <div class="card" style="margin-bottom:2rem;padding:1.25rem 1.5rem;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Emails de aprobación por país</div>
+    <div style="font-size:12px;color:var(--gray-text);margin-bottom:12px;">El email de cada país recibe las solicitudes de aprobación de flyers de ese mercado.</div>
+    <div id="approvalEmailRows" style="margin-bottom:10px;"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <input type="text" id="newCountryInput" placeholder="País (ej: México)" style="flex:1;min-width:120px;max-width:180px;" maxlength="40" />
+      <input type="email" id="newEmailInput" placeholder="email@empresa.com" style="flex:2;min-width:180px;max-width:280px;" maxlength="80" />
+      <button type="button" class="btn-secondary" onclick="addApprovalEmail()">+ Agregar</button>
+    </div>
+    <div style="margin-top:10px;">
+      <button class="btn-primary" onclick="saveApprovalEmails()" style="font-size:13px;padding:6px 18px;">Guardar emails</button>
+      <span id="emailsSavedMsg" style="display:none;font-size:12px;color:var(--cyan-2);margin-left:10px;">✓ Guardado</span>
+    </div>
+  </div>
+
   <p class="section-label">Diseños publicados</p>
   <div class="admin-grid" id="adminGrid">
     <div class="skeleton" style="height:240px;border-radius:10px;"></div>
@@ -211,7 +226,7 @@ document.getElementById('passInput').addEventListener('keydown', e => { if(e.key
 window.logout = function() { sessionStorage.removeItem('ua-admin'); location.reload(); };
 
 async function start() {
-  await Promise.all([loadSvgTemplate(), loadHeaderOptions(), loadDesigns()]);
+  await Promise.all([loadSvgTemplate(), loadHeaderOptions(), loadApprovalEmails(), loadDesigns()]);
 }
 if (sessionStorage.getItem('ua-admin')==='1') {
   document.getElementById('loginWrap').style.display = 'none';
@@ -372,6 +387,59 @@ window.addHeaderOption = function() {
 window.removeHeaderOption = function(i) {
   headerOptions.splice(i, 1);
   renderOptionChips();
+};
+
+// ── Approval emails by country ────────────────────────────────────────────────
+let approvalEmails = {};
+
+async function loadApprovalEmails() {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'global'));
+    approvalEmails = (snap.exists() ? snap.data().approvalEmails : null) || {};
+  } catch(e) { approvalEmails = {}; }
+  renderApprovalEmailRows();
+}
+
+function renderApprovalEmailRows() {
+  const container = document.getElementById('approvalEmailRows');
+  container.innerHTML = '';
+  Object.entries(approvalEmails).forEach(([country, email]) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;';
+    row.innerHTML = `
+      <span style="font-weight:600;min-width:110px;">${country}</span>
+      <span style="color:var(--gray-text);flex:1;">${email}</span>
+      <button type="button" onclick="removeApprovalEmail('${country}')"
+        style="background:none;border:none;color:#e05c2a;cursor:pointer;font-size:16px;line-height:1;">×</button>`;
+    container.appendChild(row);
+  });
+  if (!Object.keys(approvalEmails).length) {
+    container.innerHTML = '<div style="font-size:12px;color:var(--gray-text);">Sin países configurados todavía.</div>';
+  }
+}
+
+window.addApprovalEmail = function() {
+  const country = document.getElementById('newCountryInput').value.trim();
+  const email   = document.getElementById('newEmailInput').value.trim();
+  if (!country || !email) return;
+  approvalEmails[country] = email;
+  renderApprovalEmailRows();
+  document.getElementById('newCountryInput').value = '';
+  document.getElementById('newEmailInput').value   = '';
+};
+
+window.removeApprovalEmail = function(country) {
+  delete approvalEmails[country];
+  renderApprovalEmailRows();
+};
+
+window.saveApprovalEmails = async function() {
+  try {
+    await setDoc(doc(db, 'config', 'global'), { approvalEmails }, { merge: true });
+    const msg = document.getElementById('emailsSavedMsg');
+    msg.style.display = 'inline';
+    setTimeout(() => msg.style.display = 'none', 2500);
+  } catch(e) { toast('Error al guardar emails', true); }
 };
 
 window.saveHeaderOptions = async function() {

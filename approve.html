@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aprobación de flyer — Universal Assistance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .approve-layout { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start; }
+    @media(max-width:700px){ .approve-layout { grid-template-columns:1fr; } }
+    .info-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .info-row:last-child { border-bottom:none; }
+    .info-label { color:var(--gray-text); font-weight:600; }
+    .info-value { color:var(--dark-text); font-weight:500; text-align:right; }
+    .btn-approve { width:100%; padding:14px; background:#43a047; color:#fff; border:none; border-radius:8px; font-size:15px; font-weight:700; font-family:inherit; cursor:pointer; margin-bottom:10px; }
+    .btn-approve:hover { background:#388e3c; }
+    .btn-reject  { width:100%; padding:14px; background:#fff; color:#e05c2a; border:2px solid #e05c2a; border-radius:8px; font-size:15px; font-weight:700; font-family:inherit; cursor:pointer; }
+    .btn-reject:hover { background:#fce8e0; }
+    .reject-area { display:none; margin-top:12px; }
+    .reject-area textarea { width:100%; min-height:90px; padding:10px; border:1.5px solid var(--border); border-radius:7px; font-size:13px; font-family:inherit; resize:vertical; }
+    .reject-area textarea:focus { outline:none; border-color:#e05c2a; }
+    .btn-confirm-reject { width:100%; padding:12px; background:#e05c2a; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer; margin-top:8px; }
+    .status-done { text-align:center; padding:2rem; }
+    .status-done .icon { font-size:3rem; display:block; margin-bottom:.75rem; }
+    .status-done h2 { font-size:1.2rem; font-weight:700; color:var(--dark-text); }
+    .status-done p  { font-size:13px; color:var(--gray-text); margin-top:.5rem; }
+    .loading-center { text-align:center; padding:3rem; color:var(--gray-text); font-size:13px; }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <img src="assets/logo-ua-white.png" alt="Universal Assistance" style="height:32px;width:auto;" />
+  </div>
+  <div class="header-right">
+    <span style="color:rgba(255,255,255,.5);font-size:11px;text-transform:uppercase;letter-spacing:.08em;">Panel de Aprobación</span>
+  </div>
+</header>
+
+<div class="subnav">
+  <div class="subnav-label"><span class="subnav-dot"></span>Verificación de flyers</div>
+</div>
+
+<div class="container">
+  <div class="page-heading">
+    <h1>Revisión de flyer</h1>
+    <p>Revisá el diseño y aprobá o rechazá la solicitud.</p>
+  </div>
+
+  <div id="loadingMsg" class="loading-center">Cargando solicitud...</div>
+  <div id="alreadyDone" class="status-done" style="display:none;"></div>
+
+  <div id="mainContent" style="display:none;">
+    <div class="approve-layout">
+
+      <!-- Columna izquierda: info + acciones -->
+      <div>
+        <div class="card" style="margin-bottom:1.25rem;">
+          <div class="card-header">
+            <div class="card-header-accent"></div>
+            <span class="card-title">Información de la solicitud</span>
+          </div>
+          <div class="card-body">
+            <div class="info-row"><span class="info-label">Enviado por</span><span class="info-value" id="infoSender">—</span></div>
+            <div class="info-row"><span class="info-label">País</span><span class="info-value" id="infoCountry">—</span></div>
+            <div class="info-row"><span class="info-label">Diseño</span><span class="info-value" id="infoDesign">—</span></div>
+            <div class="info-row"><span class="info-label">Fecha</span><span class="info-value" id="infoDate">—</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-accent"></div>
+            <span class="card-title">Tu decisión</span>
+          </div>
+          <div class="card-body">
+            <button class="btn-approve" onclick="approve()">✅ Aprobar flyer</button>
+            <button class="btn-reject"  onclick="showRejectArea()">❌ Rechazar</button>
+            <div class="reject-area" id="rejectArea">
+              <textarea id="rejectReason" placeholder="Explicá el motivo del rechazo para que el comercial pueda corregirlo..."></textarea>
+              <button class="btn-confirm-reject" onclick="reject()">Confirmar rechazo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Columna derecha: preview del flyer -->
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-header-accent"></div>
+            <span class="card-title">Vista del flyer</span>
+          </div>
+          <div class="card-body" style="padding:1rem;">
+            <div class="preview-wrap" id="previewWrap">
+              <div class="preview-placeholder"><span style="font-size:2rem;">🖼</span><span>Cargando...</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"><span class="toast-icon">✓</span><span id="toastMsg"></span></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, doc, getDoc, updateDoc, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { firebaseConfig, SVG_CONFIG } from './js/firebase-config.js';
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+const params = new URLSearchParams(location.search);
+const sid    = params.get('sid');
+
+let submission = null;
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function bufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let b64 = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk)
+    b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return btoa(b64);
+}
+
+async function init() {
+  if (!sid) {
+    document.getElementById('loadingMsg').textContent = 'Link inválido.';
+    return;
+  }
+
+  const snap = await getDoc(doc(db, 'submissions', sid));
+  if (!snap.exists()) {
+    document.getElementById('loadingMsg').textContent = 'Solicitud no encontrada.';
+    return;
+  }
+
+  submission = { id: snap.id, ...snap.data() };
+
+  // If already resolved, show status
+  if (submission.status !== 'pending') {
+    document.getElementById('loadingMsg').style.display = 'none';
+    const done = document.getElementById('alreadyDone');
+    done.style.display = 'block';
+    if (submission.status === 'approved') {
+      done.innerHTML = `<span class="icon">✅</span><h2>Ya fue aprobado</h2><p>Este flyer ya fue aprobado. El comercial puede descargarlo.</p>`;
+    } else {
+      done.innerHTML = `<span class="icon">❌</span><h2>Ya fue rechazado</h2><p>Este flyer ya fue rechazado${submission.rejectionReason ? ` con el motivo: <em>${submission.rejectionReason}</em>` : ''}.</p>`;
+    }
+    return;
+  }
+
+  // Fill info panel
+  document.getElementById('infoSender').textContent  = submission.senderName  || '—';
+  document.getElementById('infoCountry').textContent = submission.country      || '—';
+  document.getElementById('infoDesign').textContent  = submission.designName   || '—';
+  const ts = submission.createdAt?.toDate();
+  document.getElementById('infoDate').textContent = ts
+    ? ts.toLocaleDateString('es-AR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})
+    : '—';
+
+  // Render flyer
+  await renderFlyer();
+
+  document.getElementById('loadingMsg').style.display = 'none';
+  document.getElementById('mainContent').style.display = 'block';
+}
+
+async function renderFlyer() {
+  const svgRes = await fetch('templates/promo-mx.svg');
+  let rawSvg   = await svgRes.text();
+
+  // Inject background
+  let bgDataUrl = submission.backgroundData || null;
+  if (!bgDataUrl) {
+    const fallback = 'templates/promo-bg.jpg';
+    const imgRes   = await fetch(fallback);
+    const imgBuf   = await imgRes.arrayBuffer();
+    const imgMime  = imgRes.headers.get('content-type') || 'image/jpeg';
+    bgDataUrl = `data:${imgMime};base64,${bufToBase64(imgBuf)}`;
+  }
+  const svgText = rawSvg.replace(/(<image[^>]*)(xlink:href="[^"]*")/,
+    `$1xlink:href="${bgDataUrl}" href="${bgDataUrl}"`);
+
+  // Apply fields
+  const doc2   = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+  const fields  = submission.fields  || {};
+  const enabled = submission.enabled || {};
+  const cfg     = SVG_CONFIG;
+
+  (cfg.hideSelectors||[]).forEach(sel =>
+    doc2.querySelectorAll(sel).forEach(el => el.setAttribute('visibility','hidden')));
+
+  function setField(sel, val) {
+    const ts = doc2.querySelector(sel); if (!ts) return;
+    ts.textContent = val || '';
+  }
+
+  // hasta / descuento
+  if (cfg.bebasSelectors) {
+    // find selector for hasta and descuento from DEFAULT_FIELDS
+  }
+
+  // Use known selectors from SVG_CONFIG
+  const hastaField    = Object.keys(fields).find(k => k === 'hasta');
+  const descField     = Object.keys(fields).find(k => k === 'descuento');
+
+  // Apply each field by its selector (we use SVG_CONFIG which has selectorCuotas etc)
+  // For simplicity, apply the two main text fields via SVG_CONFIG selectors
+  // The bebasSelectors include the tspan selectors for hasta and descuento
+  const bebasSelectors = cfg.bebasSelectors || [];
+  // hasta is usually first selector, descuento second
+  if (bebasSelectors[0] && fields['hasta'])    setField(bebasSelectors[0], fields['hasta']);
+  if (bebasSelectors[1] && fields['descuento']) setField(bebasSelectors[1], fields['descuento']);
+
+  const cuotasOn  = enabled['cuotas'] && fields['cuotas'];
+  const bene2Val  = (enabled['beneficio2'] && fields['beneficio2']) ? fields['beneficio2'] : 'EN ASISTENCIA AL VIAJERO';
+  if (cuotasOn) {
+    setField(cfg.selectorCuotas,     `+ ${fields['cuotas']} CUOTAS SIN INTERES`);
+    setField(cfg.selectorBeneficio2, bene2Val);
+  } else {
+    setField(cfg.selectorCuotas,     bene2Val);
+    setField(cfg.selectorBeneficio2, '');
+  }
+
+  bebasSelectors.forEach(sel =>
+    doc2.querySelectorAll(sel).forEach(el =>
+      el.setAttribute('style', (el.getAttribute('style')||'') + '; font-family: "Bebas Neue", sans-serif !important;')));
+
+  const finalSvg = new XMLSerializer().serializeToString(doc2);
+  const wrap = document.getElementById('previewWrap');
+  wrap.innerHTML = finalSvg;
+  const svgEl = wrap.querySelector('svg');
+  if (svgEl) {
+    svgEl.removeAttribute('width');
+    svgEl.removeAttribute('height');
+    svgEl.style.width   = '100%';
+    svgEl.style.height  = 'auto';
+    svgEl.style.display = 'block';
+  }
+}
+
+window.showRejectArea = function() {
+  document.getElementById('rejectArea').style.display = 'block';
+  document.getElementById('rejectReason').focus();
+};
+
+window.approve = async function() {
+  if (!confirm('¿Confirmás la aprobación de este flyer?')) return;
+  try {
+    await updateDoc(doc(db, 'submissions', sid), {
+      status: 'approved',
+      resolvedAt: serverTimestamp()
+    });
+    document.getElementById('mainContent').style.display = 'none';
+    const done = document.getElementById('alreadyDone');
+    done.style.display = 'block';
+    done.innerHTML = `<span class="icon">✅</span><h2>Flyer aprobado</h2><p>El comercial ya puede descargarlo.</p>`;
+  } catch(e) {
+    console.error(e);
+    toast('Error al aprobar');
+  }
+};
+
+window.reject = async function() {
+  const reason = document.getElementById('rejectReason').value.trim();
+  if (!reason) { toast('⚠ Escribí el motivo del rechazo'); return; }
+  try {
+    await updateDoc(doc(db, 'submissions', sid), {
+      status: 'rejected',
+      rejectionReason: reason,
+      resolvedAt: serverTimestamp()
+    });
+    document.getElementById('mainContent').style.display = 'none';
+    const done = document.getElementById('alreadyDone');
+    done.style.display = 'block';
+    done.innerHTML = `<span class="icon">❌</span><h2>Flyer rechazado</h2><p>El comercial fue notificado con el motivo.</p>`;
+  } catch(e) {
+    console.error(e);
+    toast('Error al rechazar');
+  }
+};
+
+init().catch(e => {
+  console.error(e);
+  document.getElementById('loadingMsg').textContent = 'Error al cargar la solicitud.';
+});
+</script>
+</body>
+</html>

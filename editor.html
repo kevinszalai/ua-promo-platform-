@@ -7,6 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <style>
+    .status-box { border-radius:10px; padding:1rem 1.25rem; margin-bottom:1rem; font-size:13px; }
+    .status-pending  { background:#fff8e1; border:1.5px solid #f0b429; color:#7d5a00; }
+    .status-approved { background:#e8f5e9; border:1.5px solid #43a047; color:#1b5e20; }
+    .status-rejected { background:#fce8e0; border:1.5px solid #e05c2a; color:#7d1f00; }
+    .status-icon { font-size:1.4rem; display:block; margin-bottom:4px; }
+    .status-title { font-weight:700; font-size:14px; }
+    .rejection-reason { margin-top:8px; padding:8px 10px; background:rgba(0,0,0,.05); border-radius:6px; font-size:12px; line-height:1.5; }
+    .btn-resubmit { width:100%; margin-top:8px; padding:10px; border:1.5px solid var(--border); border-radius:7px; background:var(--white); color:var(--dark-text); font-size:13px; font-weight:600; font-family:inherit; cursor:pointer; }
+    .btn-resubmit:hover { border-color:var(--cyan-2); color:var(--cyan-2); }
+  </style>
 </head>
 <body>
 
@@ -45,7 +57,7 @@
     <div class="step-line" id="line2"></div>
     <div class="step" id="step3">
       <div class="step-num">3</div>
-      <span class="step-label">Descargá</span>
+      <span class="step-label">Enviá y descargá</span>
     </div>
   </div>
 
@@ -62,15 +74,40 @@
           <div class="skeleton" style="height:70px;"></div>
         </div>
       </div>
+
       <div class="card">
         <div class="card-header">
           <div class="card-header-accent"></div>
-          <span class="card-title">Descargar</span>
+          <span class="card-title">Envío y descarga</span>
         </div>
         <div class="card-body">
-          <div class="btn-group">
-            <button class="btn-primary" id="btnPNG" disabled>⏳ Cargando...</button>
+
+          <!-- Formulario de envío (visible antes de enviar) -->
+          <div id="submissionForm">
+            <div class="field-group">
+              <label class="field-label" for="senderNameInput">Tu nombre</label>
+              <input type="text" id="senderNameInput" placeholder="Ej: María García" maxlength="60" autocomplete="off" />
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="countrySelect">País</label>
+              <select id="countrySelect">
+                <option value="">— Seleccioná —</option>
+              </select>
+            </div>
+            <div class="btn-group" style="margin-top:.5rem;">
+              <button class="btn-primary" id="btnSubmit" disabled>📤 Enviar para verificación</button>
+            </div>
           </div>
+
+          <!-- Estado de aprobación (visible después de enviar) -->
+          <div id="approvalStatusBox" style="display:none;">
+            <div id="statusBadge" class="status-box"></div>
+            <button class="btn-resubmit" id="btnResubmit" style="display:none;" onclick="resubmit()">↩ Editar y reenviar</button>
+            <div class="btn-group" style="margin-top:.75rem;">
+              <button class="btn-primary" id="btnPNG" style="display:none;" disabled>⬇ Descargar PNG</button>
+            </div>
+          </div>
+
           <div class="live-pill">
             <span class="live-dot"></span>
             Preview en tiempo real activo
@@ -108,8 +145,12 @@
 
 <script type="module">
 import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, doc, getDoc, addDoc, collection,
+         onSnapshot, serverTimestamp }
+                                   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
+
+emailjs.init('DmvWebZQTE-t_QytL');
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
@@ -122,13 +163,16 @@ let config          = null;
 let vals            = {};
 let enabled         = {};
 let bebasFontBase64 = '';
-let bgUrl           = 'templates/promo-bg.jpg';
+let approvalEmails  = {};
+let submissionId    = params.get('sid') || null;
+let unsubListener   = null;
+let approvalStatus  = null;
 
 function toast(msg) {
   const t = document.getElementById('toast');
   document.getElementById('toastMsg').textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
+  setTimeout(() => t.classList.remove('show'), 3500);
 }
 
 async function init() {
@@ -143,13 +187,26 @@ async function init() {
 
   if (!config.fields) config.fields = DEFAULT_FIELDS;
 
-  // Apply global header options to the hasta field
-  const globalOpts = globalSnap.exists() ? globalSnap.data().headerOptions : null;
+  const globalData = globalSnap.exists() ? globalSnap.data() : {};
+
+  // Apply global header options
+  const globalOpts = globalData.headerOptions;
   if (globalOpts?.length) {
     config.fields = config.fields.map(f =>
       f.id === 'hasta' ? { ...f, options: globalOpts } : f
     );
   }
+
+  // Load approval emails by country
+  approvalEmails = globalData.approvalEmails || {};
+  const countries = Object.keys(approvalEmails);
+  const countrySelect = document.getElementById('countrySelect');
+  countries.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    countrySelect.appendChild(opt);
+  });
+
   if (!config.bebasSelectors)     config.bebasSelectors     = SVG_CONFIG.bebasSelectors;
   if (!config.hideSelectors)      config.hideSelectors      = SVG_CONFIG.hideSelectors;
   if (!config.selectorCuotas)     config.selectorCuotas     = SVG_CONFIG.selectorCuotas;
@@ -158,7 +215,6 @@ async function init() {
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
 
-  // Load SVG and font in parallel; background may already be in Firestore as base64
   const [svgRes, fontRes] = await Promise.all([
     fetch('templates/promo-mx.svg'),
     fetch('assets/fonts/BebasNeue-Regular.woff2')
@@ -176,7 +232,6 @@ async function init() {
     bgDataUrl = `data:${imgMime};base64,${bufToBase64(imgBuf)}`;
   }
 
-  // Only replace the FIRST image element (main background) — not the secondary SVG images
   svgText = rawSvg.replace(/(<image[^>]*)(xlink:href="[^"]*")/,
     `$1xlink:href="${bgDataUrl}" href="${bgDataUrl}"`);
 
@@ -185,9 +240,23 @@ async function init() {
   renderFields();
   renderPreview();
 
-  const btn = document.getElementById('btnPNG');
-  btn.textContent = '⬇ Descargar PNG';
-  btn.disabled = false;
+  // Wire up submit button
+  document.getElementById('senderNameInput').addEventListener('input', updateSubmitBtn);
+  document.getElementById('countrySelect').addEventListener('change', updateSubmitBtn);
+  document.getElementById('btnSubmit').addEventListener('click', submitForApproval);
+
+  // If returning to a previous submission
+  if (submissionId) {
+    document.getElementById('submissionForm').style.display = 'none';
+    document.getElementById('approvalStatusBox').style.display = 'block';
+    listenSubmission(submissionId);
+  }
+}
+
+function updateSubmitBtn() {
+  const name    = document.getElementById('senderNameInput').value.trim();
+  const country = document.getElementById('countrySelect').value;
+  document.getElementById('btnSubmit').disabled = !(name && country);
 }
 
 function renderFields() {
@@ -234,7 +303,7 @@ function renderFields() {
         </div>
         <div class="field-optional-body" id="body-${f.id}" style="${isOn?'':'display:none;'}">
           <input type="text" id="f-${f.id}" placeholder="${f.placeholder||''}" value="" autocomplete="off" maxlength="${f.id==='beneficio2'?'40':'80'}" ${isOn?'':'disabled'} />
-          ${f.id==='beneficio2'?`<div class="field-hint" id="counter-${f.id}" style="text-align:right;">0 / 40</div>`:(f.hint?`<div class="field-hint">${f.hint}</div>`:'')}
+          ${f.id==='beneficio2'?`<div class="field-hint" id="counter-${f.id}" style="text-align:right;">0 / 40</div>`:''}
           ${f.hint?`<div class="field-hint">${f.hint}</div>`:''}
         </div>`;
       g.querySelector(`#toggle-${f.id}`).addEventListener('change', e=>{
@@ -316,28 +385,32 @@ function renderPreview() {
     svgEl.style.height = 'auto';
     svgEl.style.display = 'block';
   }
+  // Only show watermark if not approved
   const wm = document.getElementById('watermarkOverlay');
   if(wm) {
-    wm.style.display = 'block';
-    const svg = document.getElementById('watermarkSvg');
-    const W = wm.offsetWidth || 400, H = wm.offsetHeight || 400;
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    const text = 'SOLO PREVIA';
-    const fontSize = Math.round(W * 0.09);
-    const stepX = Math.round(W * 0.55), stepY = Math.round(H * 0.28);
-    let marks = '';
-    for (let row = -1; row < H/stepY + 1; row++) {
-      for (let col = -1; col < W/stepX + 2; col++) {
-        const x = col * stepX + (row % 2 === 0 ? 0 : stepX * 0.5);
-        const y = row * stepY + stepY * 0.5;
-        marks += `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle"
-          font-family="Poppins,sans-serif" font-size="${fontSize}" font-weight="700"
-          fill="rgba(255,255,255,0.38)" letter-spacing="3"
-          transform="rotate(-30,${x},${y})"
-          style="user-select:none;">${text}</text>`;
+    const showWm = approvalStatus !== 'approved';
+    wm.style.display = showWm ? 'block' : 'none';
+    if (showWm) {
+      const svg = document.getElementById('watermarkSvg');
+      const W = wm.offsetWidth || 400, H = wm.offsetHeight || 400;
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      const text = 'SOLO PREVIA';
+      const fontSize = Math.round(W * 0.09);
+      const stepX = Math.round(W * 0.55), stepY = Math.round(H * 0.28);
+      let marks = '';
+      for (let row = -1; row < H/stepY + 1; row++) {
+        for (let col = -1; col < W/stepX + 2; col++) {
+          const x = col * stepX + (row % 2 === 0 ? 0 : stepX * 0.5);
+          const y = row * stepY + stepY * 0.5;
+          marks += `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="middle"
+            font-family="Poppins,sans-serif" font-size="${fontSize}" font-weight="700"
+            fill="rgba(255,255,255,0.38)" letter-spacing="3"
+            transform="rotate(-30,${x},${y})"
+            style="user-select:none;">${text}</text>`;
+        }
       }
+      svg.innerHTML = marks;
     }
-    svg.innerHTML = marks;
   }
 }
 
@@ -345,24 +418,132 @@ function bufToBase64(buf) {
   const bytes = new Uint8Array(buf);
   let b64 = '';
   const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
+  for (let i = 0; i < bytes.length; i += chunk)
     b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
   return btoa(b64);
 }
 
-document.getElementById('btnPNG').addEventListener('click', async () => {
-  if(!vals['descuento']||Number(vals['descuento'])<1){
-    toast('⚠ Completá el porcentaje de descuento para descargar');
-    const inp=document.getElementById('f-descuento');
-    inp.focus(); inp.style.borderColor='#e05c2a';
-    setTimeout(()=>inp.style.borderColor='',2500); return;
+// ── Approval workflow ──────────────────────────────────────────────────────────
+
+async function submitForApproval() {
+  const senderName  = document.getElementById('senderNameInput').value.trim();
+  const country     = document.getElementById('countrySelect').value;
+  if (!senderName)  { toast('⚠ Ingresá tu nombre'); return; }
+  if (!country)     { toast('⚠ Seleccioná el país'); return; }
+  if (!vals['descuento'] || Number(vals['descuento']) < 1) {
+    toast('⚠ Completá el porcentaje de descuento');
+    return;
   }
 
+  const approverEmail = approvalEmails[country];
+  if (!approverEmail) { toast('⚠ No hay email configurado para ese país'); return; }
+
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true; btn.textContent = '⏳ Enviando...';
+
+  try {
+    const docRef = await addDoc(collection(db, 'submissions'), {
+      designId,
+      designName: config.name,
+      fields: { ...vals },
+      enabled: { ...enabled },
+      backgroundData: config.backgroundData || null,
+      country,
+      senderName,
+      approverEmail,
+      status: 'pending',
+      createdAt: serverTimestamp()
+    });
+    submissionId = docRef.id;
+
+    // Update URL so they can return to this submission
+    const newUrl = new URL(location.href);
+    newUrl.searchParams.set('sid', submissionId);
+    history.replaceState({}, '', newUrl);
+
+    // Send email via EmailJS
+    const approvalLink = `${location.origin}${location.pathname.replace('editor.html','approve.html')}?sid=${submissionId}`;
+    await emailjs.send('service_10n20cs', 'template_k0s24p2', {
+      to_email:      approverEmail,
+      country,
+      design_name:   config.name,
+      sender_name:   senderName,
+      approval_link: approvalLink
+    });
+
+    document.getElementById('submissionForm').style.display = 'none';
+    document.getElementById('approvalStatusBox').style.display = 'block';
+    listenSubmission(submissionId);
+
+  } catch(e) {
+    console.error(e);
+    toast('Error al enviar la solicitud');
+    btn.disabled = false;
+    btn.textContent = '📤 Enviar para verificación';
+  }
+}
+
+function listenSubmission(sid) {
+  if (unsubListener) unsubListener();
+  unsubListener = onSnapshot(doc(db, 'submissions', sid), snap => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    approvalStatus = data.status;
+    renderApprovalStatus(data.status, data.rejectionReason);
+    renderPreview(); // update watermark visibility
+  });
+}
+
+function renderApprovalStatus(status, rejectionReason) {
+  const badge  = document.getElementById('statusBadge');
+  const btnPNG = document.getElementById('btnPNG');
+  const btnRe  = document.getElementById('btnResubmit');
+
+  if (status === 'pending') {
+    badge.className = 'status-box status-pending';
+    badge.innerHTML = `<span class="status-icon">⏳</span>
+      <div class="status-title">Esperando aprobación</div>
+      <div style="font-size:12px;margin-top:4px;">Tu solicitud fue enviada. Recibirás la respuesta aquí en tiempo real.</div>`;
+    btnPNG.style.display = 'none';
+    btnRe.style.display  = 'none';
+
+  } else if (status === 'approved') {
+    badge.className = 'status-box status-approved';
+    badge.innerHTML = `<span class="status-icon">✅</span>
+      <div class="status-title">¡Aprobado! Podés descargar el flyer.</div>`;
+    btnPNG.style.display = 'block';
+    btnPNG.disabled = false;
+    btnRe.style.display = 'none';
+
+  } else if (status === 'rejected') {
+    badge.className = 'status-box status-rejected';
+    badge.innerHTML = `<span class="status-icon">❌</span>
+      <div class="status-title">Rechazado — revisá los motivos</div>
+      ${rejectionReason ? `<div class="rejection-reason"><strong>Motivo:</strong> ${rejectionReason}</div>` : ''}`;
+    btnPNG.style.display = 'none';
+    btnRe.style.display  = 'block';
+  }
+}
+
+window.resubmit = function() {
+  if (unsubListener) { unsubListener(); unsubListener = null; }
+  submissionId   = null;
+  approvalStatus = null;
+  const newUrl = new URL(location.href);
+  newUrl.searchParams.delete('sid');
+  history.replaceState({}, '', newUrl);
+  document.getElementById('approvalStatusBox').style.display = 'none';
+  document.getElementById('submissionForm').style.display    = 'block';
+  document.getElementById('btnSubmit').disabled = false;
+  document.getElementById('btnSubmit').textContent = '📤 Enviar para verificación';
+  renderPreview();
+};
+
+// ── PNG Download (solo disponible cuando está aprobado) ────────────────────────
+document.getElementById('btnPNG').addEventListener('click', async () => {
   const btn = document.getElementById('btnPNG');
   btn.disabled = true; btn.textContent = '⏳ Generando...';
 
-  // Background already embedded as base64 in svgText — no extra fetch needed
   const exportSvg = applyEdits(svgText, true)
     .replace(/viewBox="[^"]*"/, 'viewBox="0 0 600 767.69"');
 
