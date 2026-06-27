@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Editor de Promos — Universal Assistance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <img src="assets/logo-ua-white.png" alt="Universal Assistance" style="height:32px;width:auto;" />
+  </div>
+  <div class="header-right">
+    <span class="header-email">kevinszalai@hotmail.com</span>
+    <button class="btn-header">Cerrar sesión</button>
+    <a href="index.html" class="btn-header">← Inicio</a>
+  </div>
+</header>
+
+<!-- SUBNAV -->
+<div class="subnav">
+  <div class="subnav-label">
+    <span class="subnav-dot"></span>
+    Editor de Promos
+  </div>
+  <div class="subnav-right">
+    <div class="country-btn">🇲🇽 México</div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="container">
+
+  <!-- HERO -->
+  <div class="hero-card">
+    <div>
+      <h1>Editor de Flyers Promocionales</h1>
+      <p>Seleccioná un template, editá los campos y descargalo listo para compartir.</p>
+    </div>
+    <span class="hero-card-tag">Equipo Comercial</span>
+  </div>
+
+  <!-- STEPPER -->
+  <div class="stepper-card">
+    <div class="step active">
+      <div class="step-num">1</div>
+      <span class="step-label">Elegí un template</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <span class="step-label">Editá los campos</span>
+    </div>
+    <div class="step-line"></div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <span class="step-label">Descargá</span>
+    </div>
+  </div>
+
+  <p class="section-label">Templates disponibles</p>
+  <div id="templateGrid" class="template-grid">
+    <div class="template-thumb"><div class="skeleton" style="height:140px;"></div><div style="padding:8px 12px;height:36px;" class="skeleton" style="margin:8px;width:60%;"></div></div>
+    <div class="template-thumb"><div class="skeleton" style="height:140px;"></div><div style="padding:8px 12px;height:36px;" class="skeleton" style="margin:8px;width:60%;"></div></div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"><span class="toast-icon">✓</span><span id="toastMsg"></span></div>
+
+<script>
+async function loadTemplates() {
+  const grid = document.getElementById('templateGrid');
+  try {
+    const res = await fetch('templates/catalog.json');
+    const templates = await res.json();
+    grid.innerHTML = '';
+    for (const tpl of templates) {
+      const div = document.createElement('div');
+      div.className = 'template-thumb';
+      div.innerHTML = `
+        <img src="${tpl.file}" alt="${tpl.name}" loading="lazy" onerror="this.style.background='#1a2a5e';this.style.height='140px'"/>
+        <div class="template-thumb-label">${tpl.name}</div>
+      `;
+      div.addEventListener('click', () => {
+        location.href = `editor.html?id=${encodeURIComponent(tpl.id)}`;
+      });
+      grid.appendChild(div);
+    }
+  } catch(e) {
+    grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;">Error al cargar. Asegurate de correr desde un servidor web.</p>`;
+  }
+}
+loadTemplates();
+</script>
+</body>
+</html>
