@@ -165,20 +165,15 @@ import { initializeApp }                              from 'https://www.gstatic.
 import { getFirestore, collection, getDocs, addDoc,
          deleteDoc, doc, updateDoc, serverTimestamp,
          orderBy, query }                             from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getStorage, ref, uploadBytesResumable,
-         getDownloadURL, deleteObject }               from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
 
-const app     = initializeApp(firebaseConfig);
-const db      = getFirestore(app);
-const storage = getStorage(app);
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
 
-let svgTemplate   = '';   // raw SVG text
-let designs       = [];
-let editingId     = null;
-let uploadedUrl   = null;
-let uploadedPath  = null;
-let pendingBase64 = null; // base64 of image being previewed before upload finishes
+let svgTemplate  = '';
+let designs      = [];
+let editingId    = null;
+let uploadedData = null; // compressed base64 data URL of new image
 
 // ── Load SVG template once ────────────────────────────────────────────────────
 async function loadSvgTemplate() {
@@ -247,7 +242,7 @@ function renderGrid() {
     card.className = 'design-card';
     card.innerHTML = `
       <div style="position:relative;">
-        <img class="design-thumb" src="${d.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${d.name}" style="${d.active===false?'opacity:.4;':''}" />
+        <img class="design-thumb" src="${d.backgroundData ? 'data:image/jpeg;base64,' + d.backgroundData.split(',')[1] : (d.backgroundUrl || 'templates/promo-bg.jpg')}" alt="${d.name}" style="${d.active===false?'opacity:.4;':''}" />
         ${d.active===false ? '<div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:.06em;">OCULTO</div>' : ''}
       </div>
       <div class="design-info">
@@ -256,47 +251,77 @@ function renderGrid() {
           <button class="btn-action" onclick="openModal('${d.id}')">✏ Editar</button>
           <button class="btn-action" onclick="duplicateDesign('${d.id}')">⧉ Duplicar</button>
           <button class="btn-action ${d.active===false?'':'danger'}" onclick="toggleDesign('${d.id}',${d.active===false})">${d.active===false?'👁 Publicar':'⊘ Ocultar'}</button>
-          <button class="btn-action danger" onclick="deleteDesign('${d.id}','${d.storagePath||''}')">🗑 Eliminar</button>
+          <button class="btn-action danger" onclick="deleteDesign('${d.id}')">🗑 Eliminar</button>
         </div>
       </div>`;
     grid.appendChild(card);
   });
 }
 
+// ── Image compression ─────────────────────────────────────────────────────────
+function compressImage(file, maxPx, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (w > maxPx || h > maxPx) {
+          if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+          else { w = Math.round(w * maxPx / h); h = maxPx; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── SVG preview helper ────────────────────────────────────────────────────────
-async function renderModalPreview(imageUrl) {
+function injectBgIntoPreview(dataUrl) {
+  const svgText = svgTemplate.replace(
+    /(<image[^>]*)(xlink:href="[^"]*")/g,
+    `$1xlink:href="${dataUrl}" href="${dataUrl}"`
+  );
   const wrap = document.getElementById('modalPreviewWrap');
-  if (!svgTemplate) { wrap.innerHTML = '<div class="modal-svg-placeholder">🖼</div>'; return; }
-
-  let svgText = svgTemplate;
-
-  if (imageUrl) {
-    try {
-      const res   = await fetch(imageUrl);
-      const buf   = await res.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let bin = '';
-      bytes.forEach(b => bin += String.fromCharCode(b));
-      const b64  = btoa(bin);
-      const mime = res.headers.get('content-type') || 'image/jpeg';
-      svgText = svgTemplate.replace(
-        /(<image[^>]*xlink:href=")[^"]*(")/,
-        `$1data:${mime};base64,${b64}$2`
-      );
-    } catch(e) { console.warn('preview fetch error', e); }
-  }
-
   wrap.innerHTML = svgText;
   const svgEl = wrap.querySelector('svg');
   if (svgEl) { svgEl.style.width='100%'; svgEl.style.height='auto'; svgEl.removeAttribute('width'); svgEl.removeAttribute('height'); }
 }
 
+async function renderModalPreview(bgData) {
+  if (!svgTemplate) { document.getElementById('modalPreviewWrap').innerHTML = '<div class="modal-svg-placeholder">🖼</div>'; return; }
+  if (!bgData) { injectBgIntoPreview(''); return; }
+  if (bgData.startsWith('data:')) { injectBgIntoPreview(bgData); return; }
+  // Regular URL — fetch and embed
+  try {
+    const res  = await fetch(bgData);
+    const buf  = await res.arrayBuffer();
+    const mime = res.headers.get('content-type') || 'image/jpeg';
+    const b64  = bufToBase64(buf);
+    injectBgIntoPreview(`data:${mime};base64,${b64}`);
+  } catch(e) { injectBgIntoPreview(bgData); }
+}
+
+function bufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let b64 = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk)
+    b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  return btoa(b64);
+}
+
 // ── Modal open ────────────────────────────────────────────────────────────────
 window.openModal = async function(id) {
   editingId    = id;
-  uploadedUrl  = null;
-  uploadedPath = null;
-  pendingBase64 = null;
+  uploadedData = null;
 
   const design = id ? designs.find(d => d.id === id) : null;
 
@@ -307,14 +332,13 @@ window.openModal = async function(id) {
   document.getElementById('uploadProgress').style.display = 'none';
   document.getElementById('fileInput').value = '';
   document.getElementById('uploadZone').querySelector('p').innerHTML =
-    'Hacé click o arrastrá una imagen<br><small>JPG / PNG — 1080×1080 px recomendado</small>';
+    'Hacé click o arrastrá una imagen<br><small>JPG / PNG — hasta 10MB</small>';
 
   document.getElementById('modalOverlay').classList.remove('hidden');
   document.getElementById('designName').focus();
 
-  // Show current background in preview
-  const bgUrl = design?.backgroundUrl || 'templates/promo-bg.jpg';
-  await renderModalPreview(bgUrl);
+  const bgData = design?.backgroundData || design?.backgroundUrl || 'templates/promo-bg.jpg';
+  await renderModalPreview(bgData);
 };
 
 window.closeModal = function() {
@@ -330,48 +354,21 @@ zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('
 window.onFileSelected = function(e) { if(e.target.files[0]) handleFile(e.target.files[0]); };
 
 async function handleFile(file) {
-  if (file.size > 5*1024*1024) { toast('La imagen no puede superar 5MB', true); return; }
+  if (file.size > 10*1024*1024) { toast('La imagen no puede superar 10MB', true); return; }
 
-  // Show filename
-  zone.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><small>Subiendo...</small>`;
-
-  // Read as base64 for instant preview
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const dataUrl = e.target.result;
-    // Inject into SVG for instant preview
-    const mime = file.type || 'image/jpeg';
-    const b64  = dataUrl.split(',')[1];
-    const svgText = svgTemplate.replace(
-      /(<image[^>]*xlink:href=")[^"]*(")/,
-      `$1data:${mime};base64,${b64}$2`
-    );
-    const wrap = document.getElementById('modalPreviewWrap');
-    wrap.innerHTML = svgText;
-    const svgEl = wrap.querySelector('svg');
-    if (svgEl) { svgEl.style.width='100%'; svgEl.style.height='auto'; svgEl.removeAttribute('width'); svgEl.removeAttribute('height'); }
-  };
-  reader.readAsDataURL(file);
-
-  // Upload to Firebase Storage
-  const path    = `backgrounds/${Date.now()}-${file.name.replace(/\s/g,'_')}`;
-  const storRef = ref(storage, path);
-  const task    = uploadBytesResumable(storRef, file);
-
-  document.getElementById('uploadProgress').style.display = '';
+  zone.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><small>Procesando...</small>`;
   document.getElementById('modalSaveBtn').disabled = true;
 
-  task.on('state_changed',
-    snap => { document.getElementById('uploadBar').style.width = (snap.bytesTransferred/snap.totalBytes*100)+'%'; },
-    err  => { toast('Error al subir imagen', true); console.error(err); document.getElementById('modalSaveBtn').disabled=false; },
-    async () => {
-      uploadedUrl  = await getDownloadURL(task.snapshot.ref);
-      uploadedPath = path;
-      document.getElementById('modalSaveBtn').disabled = false;
-      zone.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><small style="color:var(--cyan-2);">✓ Imagen lista</small>`;
-      toast('Imagen subida ✓');
-    }
-  );
+  try {
+    uploadedData = await compressImage(file, 1080, 0.78);
+    injectBgIntoPreview(uploadedData);
+    zone.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><small style="color:var(--cyan-2);">✓ Lista</small>`;
+  } catch(e) {
+    toast('Error al procesar la imagen', true);
+    console.error(e);
+  }
+
+  document.getElementById('modalSaveBtn').disabled = false;
 }
 
 // ── Save ──────────────────────────────────────────────────────────────────────
@@ -385,13 +382,13 @@ window.saveDesign = async function() {
   try {
     if (editingId) {
       const upd = { name };
-      if (uploadedUrl) { upd.backgroundUrl = uploadedUrl; upd.storagePath = uploadedPath; }
+      if (uploadedData) { upd.backgroundData = uploadedData; }
       await updateDoc(doc(db,'designs',editingId), upd);
       toast('Diseño actualizado ✓');
     } else {
-      if (!uploadedUrl) { toast('Subí una imagen primero', true); btn.disabled=false; btn.textContent='Guardar'; return; }
+      if (!uploadedData) { toast('Subí una imagen primero', true); btn.disabled=false; btn.textContent='Guardar'; return; }
       await addDoc(collection(db,'designs'), {
-        name, backgroundUrl: uploadedUrl, storagePath: uploadedPath,
+        name, backgroundData: uploadedData,
         fields: DEFAULT_FIELDS, ...SVG_CONFIG,
         active: true, createdAt: serverTimestamp()
       });
@@ -419,8 +416,8 @@ window.duplicateDesign = async function(id) {
   if (!d) return;
   try {
     await addDoc(collection(db,'designs'), {
-      name: d.name+' (copia)', backgroundUrl: d.backgroundUrl||null,
-      storagePath: d.storagePath||null, fields: d.fields,
+      name: d.name+' (copia)', backgroundData: d.backgroundData||null,
+      fields: d.fields,
       bebasSelectors: d.bebasSelectors||[], hideSelectors: d.hideSelectors||[],
       selectorCuotas: d.selectorCuotas||'', selectorBeneficio2: d.selectorBeneficio2||'',
       active: true, createdAt: serverTimestamp()
@@ -430,11 +427,10 @@ window.duplicateDesign = async function(id) {
 };
 
 // ── Delete ────────────────────────────────────────────────────────────────────
-window.deleteDesign = async function(id, storagePath) {
+window.deleteDesign = async function(id) {
   if (!confirm('¿Eliminás este diseño? No se puede deshacer.')) return;
   try {
     await deleteDoc(doc(db,'designs',id));
-    if (storagePath) { try { await deleteObject(ref(storage,storagePath)); } catch(e){} }
     toast('Diseño eliminado'); await loadDesigns();
   } catch(e) { toast('Error al eliminar', true); }
 };

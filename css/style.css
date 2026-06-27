@@ -448,12 +448,12 @@ body {
   border-radius: 8px;
   overflow: hidden;
   background: #1a2a5e;
+  aspect-ratio: 600 / 556;
 }
 
 .preview-wrap img,
 .preview-wrap svg {
   width: 100%;
-  height: auto;
   display: block;
 }
 

@@ -129,12 +129,10 @@ function toast(msg) {
 async function init() {
   if (!designId) { location.href = 'index.html'; return; }
 
-  // Load design from Firestore
   const snap = await getDoc(doc(db, 'designs', designId));
   if (!snap.exists()) { location.href = 'index.html'; return; }
   config = { id: snap.id, ...snap.data() };
 
-  // Ensure required SVG config fields (fallback to defaults)
   if (!config.fields)             config.fields             = DEFAULT_FIELDS;
   if (!config.bebasSelectors)     config.bebasSelectors     = SVG_CONFIG.bebasSelectors;
   if (!config.hideSelectors)      config.hideSelectors      = SVG_CONFIG.hideSelectors;
@@ -144,33 +142,35 @@ async function init() {
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
 
-  // Load SVG template
-  const svgRes = await fetch('templates/promo-mx.svg');
-  const rawSvg = await svgRes.text();
+  // Load SVG and font in parallel; background may already be in Firestore as base64
+  const [svgRes, fontRes] = await Promise.all([
+    fetch('templates/promo-mx.svg'),
+    fetch('assets/fonts/BebasNeue-Regular.woff2')
+  ]);
+  const rawSvg  = await svgRes.text();
+  const fontBuf = await fontRes.arrayBuffer();
+  bebasFontBase64 = bufToBase64(fontBuf);
 
-  // Inject background URL for preview (browser loads it directly — fast)
-  bgUrl   = config.backgroundUrl || 'templates/promo-bg.jpg';
-  svgText = rawSvg.replace(/(<image[^>]*xlink:href=")[^"]*(")/g, `$1${bgUrl}$2`);
+  let bgDataUrl = config.backgroundData || null;
+  if (!bgDataUrl) {
+    const fallback = config.backgroundUrl || 'templates/promo-bg.jpg';
+    const imgRes  = await fetch(fallback);
+    const imgBuf  = await imgRes.arrayBuffer();
+    const imgMime = imgRes.headers.get('content-type') || 'image/jpeg';
+    bgDataUrl = `data:${imgMime};base64,${bufToBase64(imgBuf)}`;
+  }
+
+  svgText = rawSvg.replace(/(<image[^>]*)(xlink:href="[^"]*")/g,
+    `$1xlink:href="${bgDataUrl}" href="${bgDataUrl}"`);
 
   config.fields.forEach(f => { vals[f.id] = ''; enabled[f.id] = !f.optional; });
 
   renderFields();
   renderPreview();
-  await preloadBebasFont();
+
   const btn = document.getElementById('btnPNG');
   btn.textContent = '⬇ Descargar PNG';
   btn.disabled = false;
-}
-
-async function preloadBebasFont() {
-  try {
-    const res   = await fetch('assets/fonts/BebasNeue-Regular.woff2');
-    const buf   = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    bytes.forEach(b => bin += String.fromCharCode(b));
-    bebasFontBase64 = btoa(bin);
-  } catch(e) {}
 }
 
 function renderFields() {
@@ -295,6 +295,16 @@ function renderPreview() {
   }
 }
 
+function bufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let b64 = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(b64);
+}
+
 document.getElementById('btnPNG').addEventListener('click', async () => {
   if(!vals['descuento']||Number(vals['descuento'])<1){
     toast('⚠ Completá el porcentaje de descuento para descargar');
@@ -303,35 +313,40 @@ document.getElementById('btnPNG').addEventListener('click', async () => {
     setTimeout(()=>inp.style.borderColor='',2500); return;
   }
 
-  // Embed background as base64 for canvas export
-  let svgForExport = svgText;
-  try {
-    const imgRes = await fetch(bgUrl);
-    const buf    = await imgRes.arrayBuffer();
-    const b64    = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    const mime   = imgRes.headers.get('content-type')||'image/jpeg';
-    svgForExport = svgText.replace(bgUrl, `data:${mime};base64,${b64}`);
-  } catch(e){ console.warn('bg embed error',e); }
+  const btn = document.getElementById('btnPNG');
+  btn.disabled = true; btn.textContent = '⏳ Generando...';
 
-  const withFont = applyEdits(svgForExport, true);
-  const blob = new Blob([withFont],{type:'image/svg+xml'});
+  // Background already embedded as base64 in svgText — no extra fetch needed
+  const exportSvg = applyEdits(svgText, true)
+    .replace(/viewBox="[^"]*"/, 'viewBox="0 0 600 556"');
+
+  const blob = new Blob([exportSvg],{type:'image/svg+xml'});
   const url  = URL.createObjectURL(blob);
   const img  = new Image();
   img.onload = ()=>{
-    const canvas=document.getElementById('exportCanvas');
-    const vb=document.querySelector('#previewWrap svg')?.getAttribute('viewBox')||'0 0 600 768';
-    const[,,w,h]=vb.split(' ').map(Number);
-    const scale=2; canvas.width=(img.naturalWidth||w)*scale; canvas.height=(img.naturalHeight||h)*scale;
-    const ctx=canvas.getContext('2d'); ctx.scale(scale,scale); ctx.drawImage(img,0,0);
+    const canvas = document.getElementById('exportCanvas');
+    const scale  = 3;
+    canvas.width  = 600 * scale;
+    canvas.height = 556 * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, 600, 556);
     URL.revokeObjectURL(url);
     canvas.toBlob(pngBlob=>{
-      const pu=URL.createObjectURL(pngBlob);
-      const a=document.createElement('a'); a.href=pu; a.download=`${config.name.replace(/\s+/g,'-')}.png`; a.click();
-      URL.revokeObjectURL(pu); toast('PNG descargado ✓');
+      const pu = URL.createObjectURL(pngBlob);
+      const a  = document.createElement('a');
+      a.href = pu; a.download = `${config.name.replace(/\s+/g,'-')}.png`; a.click();
+      URL.revokeObjectURL(pu);
+      btn.disabled = false; btn.textContent = '⬇ Descargar PNG';
+      toast('PNG descargado ✓');
     },'image/png');
   };
-  img.onerror=()=>{URL.revokeObjectURL(url);toast('Error generando PNG');};
-  img.src=url;
+  img.onerror=()=>{
+    URL.revokeObjectURL(url);
+    btn.disabled = false; btn.textContent = '⬇ Descargar PNG';
+    toast('Error generando PNG');
+  };
+  img.src = url;
 });
 
 init().catch(e=>{console.error(e);location.href='index.html';});

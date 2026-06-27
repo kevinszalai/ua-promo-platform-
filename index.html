@@ -89,7 +89,7 @@ async function loadDesigns() {
       const div  = document.createElement('div');
       div.className = 'template-thumb';
       div.innerHTML = `
-        <img src="${data.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${data.name}" loading="lazy" />
+        <img src="${data.backgroundData || data.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${data.name}" loading="lazy" />
         <div class="template-thumb-label">${data.name}</div>`;
       div.addEventListener('click', () => { location.href = `editor.html?id=${encodeURIComponent(d.id)}`; });
       grid.appendChild(div);
