@@ -89,6 +89,10 @@
               <input type="text" id="senderNameInput" placeholder="Ej: María García" maxlength="60" autocomplete="off" />
             </div>
             <div class="field-group">
+              <label class="field-label" for="senderEmailInput">Tu email</label>
+              <input type="email" id="senderEmailInput" placeholder="Ej: maria@empresa.com" maxlength="80" autocomplete="off" />
+            </div>
+            <div class="field-group">
               <label class="field-label" for="countrySelect">País</label>
               <select id="countrySelect">
                 <option value="">— Seleccioná —</option>
@@ -242,6 +246,7 @@ async function init() {
 
   // Wire up submit button
   document.getElementById('senderNameInput').addEventListener('input', updateSubmitBtn);
+  document.getElementById('senderEmailInput').addEventListener('input', updateSubmitBtn);
   document.getElementById('countrySelect').addEventListener('change', updateSubmitBtn);
   document.getElementById('btnSubmit').addEventListener('click', submitForApproval);
 
@@ -255,8 +260,9 @@ async function init() {
 
 function updateSubmitBtn() {
   const name    = document.getElementById('senderNameInput').value.trim();
+  const email   = document.getElementById('senderEmailInput').value.trim();
   const country = document.getElementById('countrySelect').value;
-  document.getElementById('btnSubmit').disabled = !(name && country);
+  document.getElementById('btnSubmit').disabled = !(name && email && country);
 }
 
 function renderFields() {
@@ -443,8 +449,10 @@ function bufToBase64(buf) {
 
 async function submitForApproval() {
   const senderName  = document.getElementById('senderNameInput').value.trim();
+  const senderEmail = document.getElementById('senderEmailInput').value.trim();
   const country     = document.getElementById('countrySelect').value;
   if (!senderName)  { toast('⚠ Ingresá tu nombre'); return; }
+  if (!senderEmail) { toast('⚠ Ingresá tu email'); return; }
   if (!country)     { toast('⚠ Seleccioná el país'); return; }
   if (!vals['descuento'] || Number(vals['descuento']) < 1) {
     toast('⚠ Completá el porcentaje de descuento');
@@ -466,6 +474,7 @@ async function submitForApproval() {
       backgroundData: config.backgroundData || null,
       country,
       senderName,
+      senderEmail,
       approverEmail,
       status: 'pending',
       createdAt: serverTimestamp()

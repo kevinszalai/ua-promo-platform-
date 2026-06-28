@@ -7,6 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>emailjs.init('DmvWebZQTE-t_QytL');</script>
   <style>
     .approve-layout { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start; }
     @media(max-width:700px){ .approve-layout { grid-template-columns:1fr; } }
@@ -252,6 +254,26 @@ window.showRejectArea = function() {
   document.getElementById('rejectReason').focus();
 };
 
+async function sendResultEmail(approved, reason) {
+  if (!submission.senderEmail) return;
+  const flyerLink = `${location.origin}${location.pathname.replace('approve.html','editor.html')}?id=${submission.designId}&sid=${sid}`;
+  const resultMessage = approved
+    ? `¡Tu flyer fue aprobado! Ya podés descargarlo entrando al link de abajo.`
+    : `Tu flyer fue rechazado.\n\nMotivo: ${reason}\n\nModificá el flyer y volvé a enviarlo para verificación.`;
+  try {
+    await emailjs.send('service_utziaf1', 'template_106ok7j', {
+      to_email:      submission.senderEmail,
+      name:          'UA Promos',
+      sender_name:   submission.senderName,
+      design_name:   submission.designName,
+      result_message: resultMessage,
+      flyer_link:    flyerLink
+    });
+  } catch(e) {
+    console.error('Error enviando email de notificación:', e);
+  }
+}
+
 window.approve = async function() {
   if (!confirm('¿Confirmás la aprobación de este flyer?')) return;
   try {
@@ -259,10 +281,11 @@ window.approve = async function() {
       status: 'approved',
       resolvedAt: serverTimestamp()
     });
+    await sendResultEmail(true);
     document.getElementById('mainContent').style.display = 'none';
     const done = document.getElementById('alreadyDone');
     done.style.display = 'block';
-    done.innerHTML = `<span class="icon">✅</span><h2>Flyer aprobado</h2><p>El comercial ya puede descargarlo.</p>`;
+    done.innerHTML = `<span class="icon">✅</span><h2>Flyer aprobado</h2><p>El comercial fue notificado por email.</p>`;
   } catch(e) {
     console.error(e);
     toast('Error al aprobar');
@@ -278,10 +301,11 @@ window.reject = async function() {
       rejectionReason: reason,
       resolvedAt: serverTimestamp()
     });
+    await sendResultEmail(false, reason);
     document.getElementById('mainContent').style.display = 'none';
     const done = document.getElementById('alreadyDone');
     done.style.display = 'block';
-    done.innerHTML = `<span class="icon">❌</span><h2>Flyer rechazado</h2><p>El comercial fue notificado con el motivo.</p>`;
+    done.innerHTML = `<span class="icon">❌</span><h2>Flyer rechazado</h2><p>El comercial fue notificado por email con el motivo.</p>`;
   } catch(e) {
     console.error(e);
     toast('Error al rechazar');
