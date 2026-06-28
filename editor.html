@@ -250,8 +250,37 @@ async function init() {
   document.getElementById('countrySelect').addEventListener('change', updateSubmitBtn);
   document.getElementById('btnSubmit').addEventListener('click', submitForApproval);
 
-  // If returning to a previous submission
+  // If returning to a previous submission, load saved field values
   if (submissionId) {
+    const subSnap = await getDoc(doc(db, 'submissions', submissionId));
+    if (subSnap.exists()) {
+      const subData = subSnap.data();
+      // Restore field values
+      if (subData.fields)  Object.assign(vals,    subData.fields);
+      if (subData.enabled) Object.assign(enabled, subData.enabled);
+      // Re-render fields with restored values
+      renderFields();
+      // Set DOM values for each field
+      config.fields.forEach(f => {
+        const el = document.getElementById(`f-${f.id}`);
+        if (!el) return;
+        if (f.type === 'cuotas' || f.optional) {
+          const tog = document.getElementById(`toggle-${f.id}`);
+          const body = document.getElementById(`body-${f.id}`);
+          if (tog)  tog.checked = !!enabled[f.id];
+          if (body) body.style.display = enabled[f.id] ? '' : 'none';
+          el.disabled = !enabled[f.id];
+        }
+        if (vals[f.id] !== undefined && vals[f.id] !== '') {
+          el.value = vals[f.id];
+          if (f.id === 'beneficio2') {
+            const counter = document.getElementById(`counter-${f.id}`);
+            if (counter) counter.textContent = `${String(vals[f.id]).length} / 40`;
+          }
+        }
+      });
+      renderPreview();
+    }
     document.getElementById('submissionForm').style.display = 'none';
     document.getElementById('approvalStatusBox').style.display = 'block';
     listenSubmission(submissionId);
