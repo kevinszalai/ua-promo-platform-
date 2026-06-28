@@ -520,6 +520,7 @@ async function submitForApproval() {
     const approvalLink = `${location.origin}${location.pathname.replace('editor.html','approve.html')}?sid=${submissionId}`;
     await emailjs.send('service_utziaf1', 'template_k0s24p2', {
       to_email:      approverEmail,
+      name:          'Validación flyer UA',
       country,
       design_name:   config.name,
       sender_name:   senderName,

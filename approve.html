@@ -263,7 +263,7 @@ async function sendResultEmail(approved, reason) {
   try {
     await emailjs.send('service_utziaf1', 'template_106ok7j', {
       to_email:      submission.senderEmail,
-      name:          'UA Promos',
+      name:          'Validación flyer UA',
       sender_name:   submission.senderName,
       design_name:   submission.designName,
       result_message: resultMessage,
