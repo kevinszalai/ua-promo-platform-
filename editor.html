@@ -532,16 +532,19 @@ async function submitForApproval() {
     newUrl.searchParams.set('sid', submissionId);
     history.replaceState({}, '', newUrl);
 
-    // Send email via EmailJS
+    // Send email via EmailJS (support multiple emails separated by comma)
     const approvalLink = `${location.origin}${location.pathname.replace('editor.html','approve.html')}?sid=${submissionId}`;
-    await emailjs.send('service_utziaf1', 'template_k0s24p2', {
-      to_email:      approverEmail,
-      name:          'Validación flyer UA',
-      country,
-      design_name:   config.name,
-      sender_name:   senderName,
-      approval_link: approvalLink
-    });
+    const approverEmails = approverEmail.split(',').map(e => e.trim()).filter(Boolean);
+    for (const email of approverEmails) {
+      await emailjs.send('service_utziaf1', 'template_k0s24p2', {
+        to_email:      email,
+        name:          'Validación flyer UA',
+        country,
+        design_name:   config.name,
+        sender_name:   senderName,
+        approval_link: approvalLink
+      });
+    }
 
     document.getElementById('submissionForm').style.display = 'none';
     document.getElementById('approvalStatusBox').style.display = 'block';
