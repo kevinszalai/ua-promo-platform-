@@ -80,7 +80,7 @@
           </div>
           <div class="card-body">
             <p style="font-size:12px;color:var(--gray-text);margin-bottom:10px;line-height:1.5;">Revisá y editá el texto legal antes de aprobar. Este texto es el que se va a usar en el flyer final.</p>
-            <textarea id="legalTextInput" style="width:100%;min-height:140px;padding:10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"></textarea>
+            <textarea id="legalTextInput" placeholder="Escribí o pegá el texto legal de esta promoción..." style="width:100%;min-height:140px;padding:10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"></textarea>
             <div style="font-size:11px;color:var(--gray-text);margin-top:8px;line-height:1.4;">Se agrega automáticamente al final: <em>"Sujeto a las Condiciones Generales, topes y exclusiones...consulta en www.universal-assistance.com o con tu asesor de viaje."</em></div>
           </div>
         </div>
@@ -194,18 +194,15 @@ async function init() {
   // Render flyer
   await renderFlyer();
 
-  // Prefill legal text textarea with the default legal copy (suffix stripped — added automatically)
+  // Legal text starts empty — the approver always writes a brand new one
   const legalInput = document.getElementById('legalTextInput');
-  let editablePart = defaultLegalText;
-  if (editablePart.endsWith(LEGAL_SUFFIX.trim())) {
-    editablePart = editablePart.slice(0, editablePart.length - LEGAL_SUFFIX.trim().length).trim();
-  }
-  legalInput.value = editablePart;
-  applyLegalText(document, legalInput.value.trim() + LEGAL_SUFFIX);
   let legalDebounce;
   legalInput.addEventListener('input', () => {
     clearTimeout(legalDebounce);
-    legalDebounce = setTimeout(() => applyLegalText(document, legalInput.value.trim() + LEGAL_SUFFIX), 300);
+    legalDebounce = setTimeout(() => {
+      const val = legalInput.value.trim();
+      applyLegalText(document, val ? (val + LEGAL_SUFFIX) : defaultLegalText);
+    }, 300);
   });
 
   document.getElementById('loadingMsg').style.display = 'none';
