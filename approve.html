@@ -73,6 +73,18 @@
           </div>
         </div>
 
+        <div class="card" style="margin-bottom:1.25rem;">
+          <div class="card-header">
+            <div class="card-header-accent"></div>
+            <span class="card-title">Texto legal</span>
+          </div>
+          <div class="card-body">
+            <p style="font-size:12px;color:var(--gray-text);margin-bottom:10px;line-height:1.5;">Revisá y editá el texto legal antes de aprobar. Este texto es el que se va a usar en el flyer final.</p>
+            <textarea id="legalTextInput" style="width:100%;min-height:140px;padding:10px;border:1.5px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"></textarea>
+            <div style="font-size:11px;color:var(--gray-text);margin-top:8px;line-height:1.4;">Se agrega automáticamente al final: <em>"Sujeto a las Condiciones Generales, topes y exclusiones...consulta en www.universal-assistance.com o con tu asesor de viaje."</em></div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="card-header">
             <div class="card-header-accent"></div>
@@ -115,6 +127,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
+import { extractDefaultLegalText, applyLegalText }    from './js/legal-text.js';
+
+const LEGAL_SUFFIX = ' - Sujeto a las Condiciones Generales, topes y exclusiones, específicos del producto adquirido. Para más información y condiciones o limitaciones aplicables, consulta en www.universal-assistance.com o con tu asesor de viaje.';
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
@@ -179,13 +194,30 @@ async function init() {
   // Render flyer
   await renderFlyer();
 
+  // Prefill legal text textarea with the default legal copy (suffix stripped — added automatically)
+  const legalInput = document.getElementById('legalTextInput');
+  let editablePart = defaultLegalText;
+  if (editablePart.endsWith(LEGAL_SUFFIX.trim())) {
+    editablePart = editablePart.slice(0, editablePart.length - LEGAL_SUFFIX.trim().length).trim();
+  }
+  legalInput.value = editablePart;
+  applyLegalText(document, legalInput.value.trim() + LEGAL_SUFFIX);
+  let legalDebounce;
+  legalInput.addEventListener('input', () => {
+    clearTimeout(legalDebounce);
+    legalDebounce = setTimeout(() => applyLegalText(document, legalInput.value.trim() + LEGAL_SUFFIX), 300);
+  });
+
   document.getElementById('loadingMsg').style.display = 'none';
   document.getElementById('mainContent').style.display = 'block';
 }
 
+let defaultLegalText = '';
+
 async function renderFlyer() {
   const svgRes = await fetch('templates/promo-mx.svg');
   let rawSvg   = await svgRes.text();
+  defaultLegalText = extractDefaultLegalText(rawSvg);
 
   // Inject background
   let bgDataUrl = submission.backgroundData || null;
@@ -275,10 +307,14 @@ async function sendResultEmail(approved, reason) {
 }
 
 window.approve = async function() {
+  const legalEditable = document.getElementById('legalTextInput').value.trim();
+  if (!legalEditable) { toast('⚠ El texto legal no puede estar vacío'); return; }
+  const legalText = legalEditable + LEGAL_SUFFIX;
   if (!confirm('¿Confirmás la aprobación de este flyer?')) return;
   try {
     await updateDoc(doc(db, 'submissions', sid), {
       status: 'approved',
+      legalText,
       resolvedAt: serverTimestamp()
     });
     await sendResultEmail(true);

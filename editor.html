@@ -154,6 +154,7 @@ import { getFirestore, doc, getDoc, addDoc, collection,
          onSnapshot, serverTimestamp }
                                    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
+import { applyLegalText } from './js/legal-text.js';
 
 emailjs.init('DmvWebZQTE-t_QytL');
 
@@ -172,6 +173,7 @@ let approvalEmails  = {};
 let submissionId    = params.get('sid') || null;
 let unsubListener   = null;
 let approvalStatus  = null;
+let approvedLegalText = null;
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -407,6 +409,7 @@ function applyEdits(src, embedFont=false) {
   if(cuotasOn){setField(config.selectorCuotas,`+ ${vals['cuotas']} CUOTAS SIN INTERES`);setField(config.selectorBeneficio2,bene2Val);}
   else{setField(config.selectorCuotas,bene2Val);setField(config.selectorBeneficio2,'');}
   (config.bebasSelectors||[]).forEach(sel=>doc2.querySelectorAll(sel).forEach(el=>el.setAttribute('style',(el.getAttribute('style')||'')+'; font-family: "Bebas Neue", sans-serif !important;')));
+  if (approvalStatus === 'approved' && approvedLegalText) applyLegalText(doc2, approvedLegalText);
   return new XMLSerializer().serializeToString(doc2);
 }
 
@@ -544,7 +547,8 @@ function listenSubmission(sid) {
   unsubListener = onSnapshot(doc(db, 'submissions', sid), snap => {
     if (!snap.exists()) return;
     const data = snap.data();
-    approvalStatus = data.status;
+    approvalStatus    = data.status;
+    approvedLegalText = data.legalText || null;
     renderApprovalStatus(data.status, data.rejectionReason);
     renderPreview(); // update watermark visibility
   });
