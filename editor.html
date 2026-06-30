@@ -409,7 +409,11 @@ function applyEdits(src, embedFont=false) {
   if(cuotasOn){setField(config.selectorCuotas,`+ ${vals['cuotas']} CUOTAS SIN INTERES`);setField(config.selectorBeneficio2,bene2Val);}
   else{setField(config.selectorCuotas,bene2Val);setField(config.selectorBeneficio2,'');}
   (config.bebasSelectors||[]).forEach(sel=>doc2.querySelectorAll(sel).forEach(el=>el.setAttribute('style',(el.getAttribute('style')||'')+'; font-family: "Bebas Neue", sans-serif !important;')));
-  if (approvalStatus === 'approved' && approvedLegalText) applyLegalText(doc2, approvedLegalText);
+  if (approvalStatus === 'approved' && approvedLegalText) {
+    applyLegalText(doc2, approvedLegalText);
+  } else {
+    applyLegalText(doc2, 'Espacio para legales — el texto se completa al momento de la validación.');
+  }
   return new XMLSerializer().serializeToString(doc2);
 }
 
