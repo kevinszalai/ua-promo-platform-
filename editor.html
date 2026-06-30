@@ -222,21 +222,35 @@ async function init() {
   document.getElementById('pageTitle').textContent = `Editá tu flyer — ${config.name}`;
   document.title = `${config.name} — UA Promos`;
 
-  const [svgRes, fontRes] = await Promise.all([
-    fetch('templates/promo-mx.svg'),
-    fetch('assets/fonts/BebasNeue-Regular.woff2')
-  ]);
-  const rawSvg  = await svgRes.text();
-  const fontBuf = await fontRes.arrayBuffer();
-  bebasFontBase64 = bufToBase64(fontBuf);
+  // Load SVG (cached in localStorage)
+  const SVG_CACHE_KEY = 'ua-svg-v2';
+  let rawSvg = localStorage.getItem(SVG_CACHE_KEY);
+  if (!rawSvg) {
+    rawSvg = await fetch('templates/promo-mx.svg').then(r => r.text());
+    try { localStorage.setItem(SVG_CACHE_KEY, rawSvg); } catch(e) {}
+  }
 
-  let bgDataUrl = config.backgroundData || null;
+  // Load font (cached in localStorage)
+  const FONT_CACHE_KEY = 'ua-font-v1';
+  bebasFontBase64 = localStorage.getItem(FONT_CACHE_KEY);
+  if (!bebasFontBase64) {
+    const fontBuf = await fetch('assets/fonts/BebasNeue-Regular.woff2').then(r => r.arrayBuffer());
+    bebasFontBase64 = bufToBase64(fontBuf);
+    try { localStorage.setItem(FONT_CACHE_KEY, bebasFontBase64); } catch(e) {}
+  }
+
+  // Load background (cached in localStorage by design id)
+  const BG_CACHE_KEY = `ua-bg-${designId}`;
+  let bgDataUrl = config.backgroundData || localStorage.getItem(BG_CACHE_KEY) || null;
   if (!bgDataUrl) {
     const fallback = config.backgroundUrl || 'templates/promo-bg.jpg';
     const imgRes  = await fetch(fallback);
     const imgBuf  = await imgRes.arrayBuffer();
     const imgMime = imgRes.headers.get('content-type') || 'image/jpeg';
     bgDataUrl = `data:${imgMime};base64,${bufToBase64(imgBuf)}`;
+  }
+  if (bgDataUrl && !config.backgroundData) {
+    try { localStorage.setItem(BG_CACHE_KEY, bgDataUrl); } catch(e) {}
   }
 
   // Apply saved image transform if present
