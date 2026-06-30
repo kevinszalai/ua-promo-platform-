@@ -56,9 +56,16 @@
     /* SVG PREVIEW in modal */
     .modal-right { display:flex; flex-direction:column; }
     .modal-right .preview-label { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--dark-text); margin-bottom:8px; }
-    .modal-svg-wrap { border-radius:8px; overflow:hidden; background:#1a2a5e; aspect-ratio:600/768; }
-    .modal-svg-wrap svg { width:100%; height:auto; display:block; }
+    .modal-svg-wrap { border-radius:8px; overflow:hidden; background:#1a2a5e; aspect-ratio:600/768; cursor:grab; user-select:none; }
+    .modal-svg-wrap.dragging { cursor:grabbing; }
+    .modal-svg-wrap svg { width:100%; height:auto; display:block; pointer-events:none; }
     .modal-svg-placeholder { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,.2); font-size:2rem; }
+    .img-adjust { display:none; margin-top:10px; padding:10px 12px; background:#f0f5fb; border-radius:8px; }
+    .img-adjust label { font-size:11px; font-weight:700; color:var(--dark-text); text-transform:uppercase; letter-spacing:.06em; display:block; margin-bottom:4px; }
+    .img-adjust input[type=range] { width:100%; }
+    .img-adjust .hint { font-size:11px; color:var(--gray-text); margin-top:6px; }
+    .img-adjust .btn-reset { font-size:11px; color:var(--cyan-2); background:none; border:none; cursor:pointer; padding:0; margin-top:4px; }
+    .img-adjust .btn-reset:hover { text-decoration:underline; }
 
     .hint-box { background:#f0f5fb; border-left:3px solid var(--cyan-2); border-radius:0 6px 6px 0; padding:.75rem 1rem; font-size:12px; color:var(--dark-text); margin-bottom:1rem; }
   </style>
@@ -183,6 +190,12 @@
       <div class="modal-svg-wrap" id="modalPreviewWrap">
         <div class="modal-svg-placeholder">🖼</div>
       </div>
+      <div class="img-adjust" id="imgAdjust">
+        <label>Zoom</label>
+        <input type="range" id="zoomSlider" min="0.10" max="0.25" step="0.001" value="0.145" />
+        <div class="hint">Arrastrá la imagen en la vista previa para reposicionarla</div>
+        <button class="btn-reset" onclick="resetImgTransform()">↺ Restablecer posición</button>
+      </div>
     </div>
 
   </div>
@@ -203,7 +216,11 @@ const db  = getFirestore(app);
 let svgTemplate  = '';
 let designs      = [];
 let editingId    = null;
-let uploadedData = null; // compressed base64 data URL of new image
+let uploadedData = null;
+
+// Image transform state
+const DEFAULT_TX = -12.87, DEFAULT_TY = -21.09, DEFAULT_SCALE = 0.145;
+let imgTx = DEFAULT_TX, imgTy = DEFAULT_TY, imgScale = DEFAULT_SCALE;
 
 // ── Load SVG template once ────────────────────────────────────────────────────
 async function loadSvgTemplate() {
@@ -313,16 +330,93 @@ function compressImage(file, maxPx, quality) {
 }
 
 // ── SVG preview helper ────────────────────────────────────────────────────────
+function buildTransform() {
+  return `translate(${imgTx.toFixed(2)} ${imgTy.toFixed(2)}) scale(${imgScale.toFixed(4)})`;
+}
+
 function injectBgIntoPreview(dataUrl) {
-  const svgText = svgTemplate.replace(
+  let svgText = svgTemplate.replace(
     /(<image[^>]*)(xlink:href="[^"]*")/,
     `$1xlink:href="${dataUrl}" href="${dataUrl}"`
+  );
+  // Apply current image transform
+  svgText = svgText.replace(
+    /(<image[^>]*transform=")[^"]*(")/,
+    `$1${buildTransform()}$2`
   );
   const wrap = document.getElementById('modalPreviewWrap');
   wrap.innerHTML = svgText;
   const svgEl = wrap.querySelector('svg');
   if (svgEl) { svgEl.style.width='100%'; svgEl.style.height='auto'; svgEl.removeAttribute('width'); svgEl.removeAttribute('height'); }
 }
+
+function updatePreviewTransform() {
+  if (!uploadedData) return;
+  const imgEl = document.querySelector('#modalPreviewWrap image');
+  if (imgEl) imgEl.setAttribute('transform', buildTransform());
+}
+
+// ── Drag to reposition ────────────────────────────────────────────────────────
+(function() {
+  let dragging = false, lastX = 0, lastY = 0;
+  const wrap = document.getElementById('modalPreviewWrap');
+
+  wrap.addEventListener('mousedown', e => {
+    if (!uploadedData) return;
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    wrap.classList.add('dragging');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const W = wrap.offsetWidth || 400;
+    const svgScale = 600 / W;
+    imgTx += (e.clientX - lastX) * svgScale;
+    imgTy += (e.clientY - lastY) * svgScale;
+    lastX = e.clientX; lastY = e.clientY;
+    updatePreviewTransform();
+  });
+  document.addEventListener('mouseup', () => {
+    dragging = false;
+    document.getElementById('modalPreviewWrap').classList.remove('dragging');
+  });
+
+  // Touch support
+  wrap.addEventListener('touchstart', e => {
+    if (!uploadedData) return;
+    dragging = true;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const W = wrap.offsetWidth || 400;
+    const svgScale = 600 / W;
+    imgTx += (e.touches[0].clientX - lastX) * svgScale;
+    imgTy += (e.touches[0].clientY - lastY) * svgScale;
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    updatePreviewTransform();
+  }, { passive: false });
+  document.addEventListener('touchend', () => { dragging = false; });
+})();
+
+// ── Zoom slider ───────────────────────────────────────────────────────────────
+document.getElementById('zoomSlider').addEventListener('input', e => {
+  const newScale = parseFloat(e.target.value);
+  // Keep image center fixed while zooming
+  const cx = imgTx + 4289 * imgScale / 2;
+  const cy = imgTy + 4017 * imgScale / 2;
+  imgScale = newScale;
+  imgTx = cx - 4289 * imgScale / 2;
+  imgTy = cy - 4017 * imgScale / 2;
+  updatePreviewTransform();
+});
+
+window.resetImgTransform = function() {
+  imgTx = DEFAULT_TX; imgTy = DEFAULT_TY; imgScale = DEFAULT_SCALE;
+  document.getElementById('zoomSlider').value = DEFAULT_SCALE;
+  updatePreviewTransform();
+};
 
 async function renderModalPreview(bgData) {
   if (!svgTemplate) { document.getElementById('modalPreviewWrap').innerHTML = '<div class="modal-svg-placeholder">🖼</div>'; return; }
@@ -466,6 +560,14 @@ window.openModal = async function(id) {
   document.getElementById('uploadZone').querySelector('p').innerHTML =
     'Hacé click o arrastrá una imagen<br><small>JPG / PNG — hasta 10MB</small>';
 
+  // Load saved image transform if editing
+  const it = design?.imageTransform;
+  imgTx    = it?.tx    ?? DEFAULT_TX;
+  imgTy    = it?.ty    ?? DEFAULT_TY;
+  imgScale = it?.scale ?? DEFAULT_SCALE;
+  document.getElementById('zoomSlider').value = imgScale;
+  document.getElementById('imgAdjust').style.display = design ? 'block' : 'none';
+
   document.getElementById('modalOverlay').classList.remove('hidden');
   document.getElementById('designName').focus();
 
@@ -493,7 +595,10 @@ async function handleFile(file) {
 
   try {
     uploadedData = await compressImage(file, 1080, 0.78);
+    imgTx = DEFAULT_TX; imgTy = DEFAULT_TY; imgScale = DEFAULT_SCALE;
+    document.getElementById('zoomSlider').value = DEFAULT_SCALE;
     injectBgIntoPreview(uploadedData);
+    document.getElementById('imgAdjust').style.display = 'block';
     zone.querySelector('p').innerHTML = `<strong>${file.name}</strong><br><small style="color:var(--cyan-2);">✓ Lista</small>`;
   } catch(e) {
     toast('Error al procesar la imagen', true);
@@ -512,15 +617,16 @@ window.saveDesign = async function() {
   btn.disabled = true; btn.textContent = 'Guardando...';
 
   try {
+    const imageTransform = { tx: imgTx, ty: imgTy, scale: imgScale };
     if (editingId) {
-      const upd = { name };
+      const upd = { name, imageTransform };
       if (uploadedData) { upd.backgroundData = uploadedData; }
       await updateDoc(doc(db,'designs',editingId), upd);
       toast('Diseño actualizado ✓');
     } else {
       if (!uploadedData) { toast('Subí una imagen primero', true); btn.disabled=false; btn.textContent='Guardar'; return; }
       await addDoc(collection(db,'designs'), {
-        name, backgroundData: uploadedData,
+        name, backgroundData: uploadedData, imageTransform,
         fields: DEFAULT_FIELDS, ...SVG_CONFIG,
         active: true, createdAt: serverTimestamp()
       });
@@ -549,6 +655,7 @@ window.duplicateDesign = async function(id) {
   try {
     await addDoc(collection(db,'designs'), {
       name: d.name+' (copia)', backgroundData: d.backgroundData||null,
+      imageTransform: d.imageTransform||{tx:DEFAULT_TX,ty:DEFAULT_TY,scale:DEFAULT_SCALE},
       fields: d.fields,
       bebasSelectors: d.bebasSelectors||[], hideSelectors: d.hideSelectors||[],
       selectorCuotas: d.selectorCuotas||'', selectorBeneficio2: d.selectorBeneficio2||'',

@@ -225,6 +225,13 @@ async function renderFlyer() {
     const imgMime  = imgRes.headers.get('content-type') || 'image/jpeg';
     bgDataUrl = `data:${imgMime};base64,${bufToBase64(imgBuf)}`;
   }
+  const it = submission.imageTransform;
+  if (it?.tx !== undefined) {
+    rawSvg = rawSvg.replace(
+      /(<image[^>]*transform=")[^"]*(")/,
+      `$1translate(${it.tx.toFixed(2)} ${it.ty.toFixed(2)}) scale(${it.scale.toFixed(4)})$2`
+    );
+  }
   const svgText = rawSvg.replace(/(<image[^>]*)(xlink:href="[^"]*")/,
     `$1xlink:href="${bgDataUrl}" href="${bgDataUrl}"`);
 
