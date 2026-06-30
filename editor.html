@@ -617,6 +617,8 @@ document.getElementById('btnPNG').addEventListener('click', async () => {
     canvas.height = 768 * scale;
     const ctx = canvas.getContext('2d');
     ctx.scale(scale, scale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 600, 768);
     ctx.drawImage(img, 0, 0, 600, 768);
     URL.revokeObjectURL(url);
     canvas.toBlob(pngBlob=>{
