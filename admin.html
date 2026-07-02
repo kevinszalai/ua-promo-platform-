@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin — UA Promos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="preconnect" href="https://firestore.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
   <link rel="stylesheet" href="css/style.css" />
   <style>
     /* LOGIN */
@@ -20,8 +24,13 @@
 
     /* DESIGN GRID */
     .admin-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:1.25rem; }
-    .design-card { background:var(--white); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; transition:transform .2s; }
+    .design-card { background:var(--white); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; transition:transform .2s, opacity .2s; cursor:default; }
     .design-card:hover { transform:translateY(-2px); }
+    .design-card.drag-over { outline:2px dashed var(--cyan-2); outline-offset:2px; }
+    .design-card.dragging { opacity:.4; }
+    .drag-handle { display:flex; align-items:center; justify-content:center; gap:4px; padding:5px 0 3px; background:#f8fafc; border-bottom:1px solid var(--border); cursor:grab; color:var(--gray-text); font-size:11px; font-weight:600; letter-spacing:.04em; }
+    .drag-handle:active { cursor:grabbing; }
+    .drag-handle svg { width:14px; height:14px; opacity:.5; }
     .design-thumb { width:100%; height:160px; object-fit:cover; display:block; background:#1a2a5e; }
     .design-info { padding:12px 14px 10px; }
     .design-name { font-size:13px; font-weight:700; color:var(--dark-text); margin-bottom:10px; }
@@ -140,7 +149,17 @@
     </div>
   </div>
 
-  <p class="section-label">Diseños publicados</p>
+  <p class="section-label">Solicitudes pendientes</p>
+  <div id="pendingSection" style="margin-bottom:2rem;">
+    <div class="skeleton" style="height:60px;border-radius:8px;"></div>
+  </div>
+
+  <p class="section-label" style="display:flex;align-items:center;gap:1rem;">
+    Diseños publicados
+    <input type="text" id="designSearch" placeholder="🔍 Buscar por nombre..."
+      style="font-size:12px;padding:6px 12px;border:1.5px solid var(--border);border-radius:6px;font-family:inherit;outline:none;flex:1;max-width:260px;"
+      oninput="filterDesigns()" />
+  </p>
   <div class="admin-grid" id="adminGrid">
     <div class="skeleton" style="height:240px;border-radius:10px;"></div>
     <div class="skeleton" style="height:240px;border-radius:10px;"></div>
@@ -207,7 +226,7 @@
 import { initializeApp }                              from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, getDocs, addDoc,
          deleteDoc, doc, getDoc, setDoc, updateDoc,
-         serverTimestamp, orderBy, query }            from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+         serverTimestamp, orderBy, where, query }     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
 
 const app = initializeApp(firebaseConfig);
@@ -242,8 +261,47 @@ window.doLogin = function() {
 document.getElementById('passInput').addEventListener('keydown', e => { if(e.key==='Enter') window.doLogin(); });
 window.logout = function() { sessionStorage.removeItem('ua-admin'); location.reload(); };
 
+let filteredDesigns = null;
+
+window.filterDesigns = function() {
+  const q = document.getElementById('designSearch').value.trim().toLowerCase();
+  filteredDesigns = q ? designs.filter(d => d.name.toLowerCase().includes(q)) : null;
+  renderGrid();
+};
+
+async function loadPendingSubmissions() {
+  const section = document.getElementById('pendingSection');
+  try {
+    const snap = await getDocs(query(
+      collection(db, 'submissions'),
+      where('status', '==', 'pending')
+    ));
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    if (!items.length) {
+      section.innerHTML = `<p style="font-size:13px;color:var(--gray-text);">Sin solicitudes pendientes.</p>`;
+      return;
+    }
+    section.innerHTML = items.map(s => {
+      const ts = s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+      const approveLink = `approve.html?sid=${s.id}`;
+      return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--white);border-radius:8px;box-shadow:var(--shadow);margin-bottom:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:var(--dark-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.designName || '—'}</div>
+          <div style="font-size:11px;color:var(--gray-text);margin-top:2px;">${s.senderName || '—'} · ${s.country || '—'} · ${ts}</div>
+          <div style="font-size:11px;color:var(--gray-text);">${s.senderEmail || ''}</div>
+        </div>
+        <a href="${approveLink}" target="_blank" style="flex-shrink:0;padding:7px 14px;background:var(--blue);color:#fff;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;">Revisar →</a>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    section.innerHTML = `<p style="font-size:13px;color:var(--gray-text);">Error al cargar solicitudes.</p>`;
+    console.error(e);
+  }
+}
+
 async function start() {
-  await Promise.all([loadSvgTemplate(), loadHeaderOptions(), loadApprovalEmails(), loadDesigns()]);
+  await Promise.all([loadSvgTemplate(), loadHeaderOptions(), loadApprovalEmails(), loadDesigns(), loadPendingSubmissions()]);
 }
 if (sessionStorage.getItem('ua-admin')==='1') {
   document.getElementById('loginWrap').style.display = 'none';
@@ -261,14 +319,36 @@ function toast(msg, err=false) {
 }
 
 // ── Load designs ──────────────────────────────────────────────────────────────
+let designOrder = []; // array of IDs in display order
+
 async function loadDesigns() {
   const grid = document.getElementById('adminGrid');
   try {
-    const snap = await getDocs(query(collection(db,'designs'), orderBy('createdAt','asc')));
-    designs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    const [snap, globalSnap] = await Promise.all([
+      getDocs(query(collection(db,'designs'), orderBy('createdAt','asc'))),
+      getDoc(doc(db,'config','global'))
+    ]);
+    const all = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+    designOrder = globalSnap.exists() ? (globalSnap.data().designOrder || []) : [];
+    // Sort by saved order; new designs (not in order) go at the end
+    designs = [
+      ...designOrder.map(id => all.find(d => d.id === id)).filter(Boolean),
+      ...all.filter(d => !designOrder.includes(d.id))
+    ];
     renderGrid();
   } catch(e) {
     grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;">Error al cargar.</p>`;
+    console.error(e);
+  }
+}
+
+async function saveDesignOrder() {
+  designOrder = designs.map(d => d.id);
+  try {
+    await setDoc(doc(db,'config','global'), { designOrder }, { merge: true });
+    toast('Orden guardado ✓');
+  } catch(e) {
+    toast('Error al guardar el orden', true);
     console.error(e);
   }
 }
@@ -277,18 +357,33 @@ function renderGrid() {
   const grid = document.getElementById('adminGrid');
   grid.innerHTML = '';
 
-  const addBtn = document.createElement('button');
-  addBtn.className = 'btn-add';
-  addBtn.innerHTML = `<span class="icon">+</span><span>Nuevo diseño</span>`;
-  addBtn.onclick = () => openModal(null);
-  grid.appendChild(addBtn);
+  const list = filteredDesigns !== null ? filteredDesigns : designs;
 
-  designs.forEach(d => {
+  if (!filteredDesigns) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-add';
+    addBtn.innerHTML = `<span class="icon">+</span><span>Nuevo diseño</span>`;
+    addBtn.onclick = () => openModal(null);
+    grid.appendChild(addBtn);
+  }
+
+  if (list.length === 0 && filteredDesigns !== null) {
+    grid.innerHTML = `<p style="font-size:13px;color:var(--gray-text);grid-column:1/-1;">Sin resultados para esa búsqueda.</p>`;
+    return;
+  }
+
+  list.forEach((d, idx) => {
     const card = document.createElement('div');
     card.className = 'design-card';
+    card.dataset.id = d.id;
+    card.draggable = true;
     card.innerHTML = `
+      <div class="drag-handle" title="Arrastrá para reordenar">
+        <svg viewBox="0 0 16 16" fill="currentColor"><circle cx="5" cy="4" r="1.2"/><circle cx="11" cy="4" r="1.2"/><circle cx="5" cy="8" r="1.2"/><circle cx="11" cy="8" r="1.2"/><circle cx="5" cy="12" r="1.2"/><circle cx="11" cy="12" r="1.2"/></svg>
+        Arrastrá para reordenar
+      </div>
       <div style="position:relative;">
-        <img class="design-thumb" src="${d.backgroundData ? 'data:image/jpeg;base64,' + d.backgroundData.split(',')[1] : (d.backgroundUrl || 'templates/promo-bg.jpg')}" alt="${d.name}" style="${d.active===false?'opacity:.4;':''}" />
+        <img class="design-thumb" src="${d.backgroundData ? 'data:image/jpeg;base64,' + d.backgroundData.split(',')[1] : (d.backgroundUrl || 'templates/promo-bg.jpg')}" alt="${d.name}" loading="lazy" style="${d.active===false?'opacity:.4;':''}" />
         ${d.active===false ? '<div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:.06em;">OCULTO</div>' : ''}
       </div>
       <div class="design-info">
@@ -300,6 +395,40 @@ function renderGrid() {
           <button class="btn-action danger" onclick="deleteDesign('${d.id}')">🗑 Eliminar</button>
         </div>
       </div>`;
+
+    // ── Drag & drop ──────────────────────────────────────────────────────────
+    let dragSrcId = null;
+    card.addEventListener('dragstart', e => {
+      dragSrcId = d.id;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', d.id);
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      grid.querySelectorAll('.design-card').forEach(c => c.classList.remove('drag-over'));
+    });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      grid.querySelectorAll('.design-card').forEach(c => c.classList.remove('drag-over'));
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const srcId = e.dataTransfer.getData('text/plain');
+      if (srcId === d.id) return;
+      const srcIdx = designs.findIndex(x => x.id === srcId);
+      const dstIdx = designs.findIndex(x => x.id === d.id);
+      if (srcIdx === -1 || dstIdx === -1) return;
+      const [moved] = designs.splice(srcIdx, 1);
+      designs.splice(dstIdx, 0, moved);
+      saveDesignOrder();
+      renderGrid();
+    });
+
     grid.appendChild(card);
   });
 }

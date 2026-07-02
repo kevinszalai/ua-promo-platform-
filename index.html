@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Editor de Promos — Universal Assistance</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="preconnect" href="https://firestore.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -31,7 +35,7 @@
   <div class="hero-card">
     <div>
       <h1>Editor de Flyers Promocionales</h1>
-      <p>Seleccioná un diseño, editá los campos y descargalo listo para compartir.</p>
+      <p>Seleccioná un diseño, completá los campos y envialo a validar. Una vez aprobado, podés descargarlo listo para compartir.</p>
     </div>
   </div>
 
@@ -48,7 +52,7 @@
     <div class="step-line"></div>
     <div class="step">
       <div class="step-num">3</div>
-      <span class="step-label">Descargá</span>
+      <span class="step-label">Enviá y descargá</span>
     </div>
   </div>
 
@@ -65,7 +69,7 @@
 
 <script type="module">
 import { initializeApp }                         from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, getDocs,
+import { getFirestore, collection, getDocs, doc, getDoc,
          orderBy, query }                        from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig }                        from './js/firebase-config.js';
 
@@ -75,21 +79,28 @@ const db  = getFirestore(app);
 async function loadDesigns() {
   const grid = document.getElementById('templateGrid');
   try {
-    const q    = query(collection(db, 'designs'), orderBy('createdAt', 'asc'));
-    const snap = await getDocs(q);
-    const active = snap.docs.filter(d => d.data().active !== false);
+    const [snap, globalSnap] = await Promise.all([
+      getDocs(query(collection(db, 'designs'), orderBy('createdAt', 'asc'))),
+      getDoc(doc(db, 'config', 'global'))
+    ]);
+    const all    = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const order  = globalSnap.exists() ? (globalSnap.data().designOrder || []) : [];
+    const sorted = [
+      ...order.map(id => all.find(d => d.id === id)).filter(Boolean),
+      ...all.filter(d => !order.includes(d.id))
+    ];
+    const active = sorted.filter(d => d.active !== false);
     if (active.length === 0) {
       grid.innerHTML = `<p style="color:var(--gray-text);font-size:13px;grid-column:1/-1;">No hay diseños disponibles todavía.</p>`;
       return;
     }
     grid.innerHTML = '';
     active.forEach(d => {
-      const data = d.data();
-      const div  = document.createElement('div');
+      const div = document.createElement('div');
       div.className = 'template-thumb';
       div.innerHTML = `
-        <img src="${data.backgroundData || data.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${data.name}" loading="lazy" />
-        <div class="template-thumb-label">${data.name}</div>`;
+        <img src="${d.backgroundData || d.backgroundUrl || 'templates/promo-bg.jpg'}" alt="${d.name}" loading="lazy" />
+        <div class="template-thumb-label">${d.name}</div>`;
       div.addEventListener('click', () => { location.href = `editor.html?id=${encodeURIComponent(d.id)}`; });
       grid.appendChild(div);
     });

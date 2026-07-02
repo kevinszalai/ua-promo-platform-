@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Editor de Flyer — Universal Assistance</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="preconnect" href="https://firestore.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
   <link rel="stylesheet" href="css/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js" defer></script>
   <style>
     .status-box { border-radius:10px; padding:1rem 1.25rem; margin-bottom:1rem; font-size:13px; }
     .status-pending  { background:#fff8e1; border:1.5px solid #f0b429; color:#7d5a00; }
@@ -119,6 +123,8 @@
           </div>
         </div>
       </div>
+
+      <div id="historySection" style="display:none;"></div>
     </div>
 
     <div class="preview-sticky">
@@ -130,9 +136,14 @@
         <div class="card-body" style="padding:1rem;">
           <div style="position:relative;">
             <div class="preview-wrap" id="previewWrap">
-              <div class="preview-placeholder">
-                <span style="font-size:2rem;">🖼</span>
-                <span>Cargando preview...</span>
+              <div class="preview-placeholder" id="previewPlaceholder">
+                <div class="preview-spinner"></div>
+                <div class="preview-load-steps">
+                  <span class="preview-load-label" id="loadLabel">Iniciando...</span>
+                  <div class="preview-load-bar-wrap">
+                    <div class="preview-load-bar" id="loadBar"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div id="watermarkOverlay" style="display:none;position:absolute;inset:0;pointer-events:none;overflow:hidden;">
@@ -150,8 +161,8 @@
 
 <script type="module">
 import { initializeApp }           from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, doc, getDoc, addDoc, collection,
-         onSnapshot, serverTimestamp }
+import { getFirestore, doc, getDoc, getDocs, addDoc, collection,
+         onSnapshot, serverTimestamp, query, where, orderBy }
                                    from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { firebaseConfig, DEFAULT_FIELDS, SVG_CONFIG } from './js/firebase-config.js';
 import { applyLegalText } from './js/legal-text.js';
@@ -175,6 +186,40 @@ let unsubListener   = null;
 let approvalStatus  = null;
 let approvedLegalText = null;
 
+function saveDraft() {
+  if (!designId) return;
+  try {
+    localStorage.setItem(`ua-draft-${designId}`, JSON.stringify({
+      vals: { ...vals },
+      enabled: { ...enabled },
+      senderName:  document.getElementById('senderNameInput').value,
+      senderEmail: document.getElementById('senderEmailInput').value,
+      country:     document.getElementById('countrySelect').value
+    }));
+  } catch(e) {}
+}
+
+function restoreFieldDomValues() {
+  config.fields.forEach(f => {
+    const el = document.getElementById(`f-${f.id}`);
+    if (!el) return;
+    if (f.type === 'cuotas' || f.optional) {
+      const tog  = document.getElementById(`toggle-${f.id}`);
+      const body = document.getElementById(`body-${f.id}`);
+      if (tog)  tog.checked = !!enabled[f.id];
+      if (body) body.style.display = enabled[f.id] ? '' : 'none';
+      el.disabled = !enabled[f.id];
+    }
+    if (vals[f.id] !== undefined && vals[f.id] !== '') {
+      el.value = vals[f.id];
+      if (f.id === 'beneficio2') {
+        const counter = document.getElementById(`counter-${f.id}`);
+        if (counter) counter.textContent = `${String(vals[f.id]).length} / 40`;
+      }
+    }
+  });
+}
+
 function toast(msg) {
   const t = document.getElementById('toast');
   document.getElementById('toastMsg').textContent = msg;
@@ -182,8 +227,17 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 3500);
 }
 
+function setLoadStep(label, pct) {
+  const lbl = document.getElementById('loadLabel');
+  const bar = document.getElementById('loadBar');
+  if (lbl) lbl.textContent = label;
+  if (bar) bar.style.width = pct + '%';
+}
+
 async function init() {
   if (!designId) { location.href = 'index.html'; return; }
+
+  setLoadStep('Cargando diseño…', 10);
 
   const [snap, globalSnap] = await Promise.all([
     getDoc(doc(db, 'designs', designId)),
@@ -223,6 +277,7 @@ async function init() {
   document.title = `${config.name} — UA Promos`;
 
   // Load SVG (cached in localStorage)
+  setLoadStep('Cargando plantilla…', 30);
   const SVG_CACHE_KEY = 'ua-svg-v2';
   let rawSvg = localStorage.getItem(SVG_CACHE_KEY);
   if (!rawSvg) {
@@ -231,6 +286,7 @@ async function init() {
   }
 
   // Load font (cached in localStorage)
+  setLoadStep('Cargando tipografía…', 55);
   const FONT_CACHE_KEY = 'ua-font-v1';
   bebasFontBase64 = localStorage.getItem(FONT_CACHE_KEY);
   if (!bebasFontBase64) {
@@ -240,6 +296,7 @@ async function init() {
   }
 
   // Load background (cached in localStorage by design id)
+  setLoadStep('Cargando imagen de fondo…', 75);
   const BG_CACHE_KEY = `ua-bg-${designId}`;
   let bgDataUrl = config.backgroundData || localStorage.getItem(BG_CACHE_KEY) || null;
   if (!bgDataUrl) {
@@ -252,6 +309,8 @@ async function init() {
   if (bgDataUrl && !config.backgroundData) {
     try { localStorage.setItem(BG_CACHE_KEY, bgDataUrl); } catch(e) {}
   }
+
+  setLoadStep('Aplicando diseño…', 90);
 
   // Apply saved image transform if present
   const it = config.imageTransform;
@@ -266,50 +325,49 @@ async function init() {
 
   config.fields.forEach(f => { vals[f.id] = ''; enabled[f.id] = !f.optional; });
 
+  setLoadStep('¡Listo!', 100);
+
   renderFields();
-  renderPreview();
 
   // Wire up submit button
-  document.getElementById('senderNameInput').addEventListener('input', updateSubmitBtn);
-  document.getElementById('senderEmailInput').addEventListener('input', updateSubmitBtn);
-  document.getElementById('countrySelect').addEventListener('change', updateSubmitBtn);
+  document.getElementById('senderNameInput').addEventListener('input', () => { updateSubmitBtn(); saveDraft(); });
+  document.getElementById('senderEmailInput').addEventListener('input', () => { updateSubmitBtn(); saveDraft(); });
+  document.getElementById('countrySelect').addEventListener('change', () => { updateSubmitBtn(); saveDraft(); });
   document.getElementById('btnSubmit').addEventListener('click', submitForApproval);
 
-  // If returning to a previous submission, load saved field values
+  // If returning to a previous submission, restore its fields
   if (submissionId) {
     const subSnap = await getDoc(doc(db, 'submissions', submissionId));
     if (subSnap.exists()) {
       const subData = subSnap.data();
-      // Restore field values
       if (subData.fields)  Object.assign(vals,    subData.fields);
       if (subData.enabled) Object.assign(enabled, subData.enabled);
-      // Re-render fields with restored values
       renderFields();
-      // Set DOM values for each field
-      config.fields.forEach(f => {
-        const el = document.getElementById(`f-${f.id}`);
-        if (!el) return;
-        if (f.type === 'cuotas' || f.optional) {
-          const tog = document.getElementById(`toggle-${f.id}`);
-          const body = document.getElementById(`body-${f.id}`);
-          if (tog)  tog.checked = !!enabled[f.id];
-          if (body) body.style.display = enabled[f.id] ? '' : 'none';
-          el.disabled = !enabled[f.id];
-        }
-        if (vals[f.id] !== undefined && vals[f.id] !== '') {
-          el.value = vals[f.id];
-          if (f.id === 'beneficio2') {
-            const counter = document.getElementById(`counter-${f.id}`);
-            if (counter) counter.textContent = `${String(vals[f.id]).length} / 40`;
-          }
-        }
-      });
+      restoreFieldDomValues();
       renderPreview();
     }
     document.getElementById('submissionForm').style.display = 'none';
     document.getElementById('approvalStatusBox').style.display = 'block';
     listenSubmission(submissionId);
+  } else {
+    // Restore draft saved locally
+    try {
+      const draft = JSON.parse(localStorage.getItem(`ua-draft-${designId}`) || 'null');
+      if (draft) {
+        if (draft.vals)    Object.assign(vals,    draft.vals);
+        if (draft.enabled) Object.assign(enabled, draft.enabled);
+        renderFields();
+        restoreFieldDomValues();
+        if (draft.senderName)  document.getElementById('senderNameInput').value  = draft.senderName;
+        if (draft.senderEmail) document.getElementById('senderEmailInput').value = draft.senderEmail;
+        if (draft.country)     document.getElementById('countrySelect').value     = draft.country;
+        updateSubmitBtn();
+      }
+    } catch(e) {}
+    renderPreview();
   }
+
+  renderHistory();
 }
 
 function updateSubmitBtn() {
@@ -362,7 +420,7 @@ function renderFields() {
           </label>
         </div>
         <div class="field-optional-body" id="body-${f.id}" style="${isOn?'':'display:none;'}">
-          <input type="text" id="f-${f.id}" placeholder="${f.placeholder||''}" value="" autocomplete="off" maxlength="${f.id==='beneficio2'?'40':'80'}" ${isOn?'':'disabled'} />
+          <input type="text" id="f-${f.id}" placeholder="${f.placeholder||''}" value="" autocomplete="off" maxlength="${f.id==='beneficio2'?'25':'80'}" ${isOn?'':'disabled'} />
           ${f.id==='beneficio2'?`<div class="field-hint" id="counter-${f.id}" style="text-align:right;">0 / 40</div>`:''}
           ${f.hint?`<div class="field-hint">${f.hint}</div>`:''}
         </div>`;
@@ -440,6 +498,7 @@ function applyEdits(src, embedFont=false) {
 }
 
 function onFieldModified() {
+  saveDraft();
   // If there's an active submission, reset approval state so they must re-submit
   if (submissionId) {
     if (unsubListener) { unsubListener(); unsubListener = null; }
@@ -457,6 +516,8 @@ function onFieldModified() {
 
 function renderPreview() {
   const wrap = document.getElementById('previewWrap');
+  const placeholder = document.getElementById('previewPlaceholder');
+  if (placeholder) placeholder.remove();
   wrap.innerHTML = applyEdits(svgText, false);
   const svgEl = wrap.querySelector('svg');
   if(svgEl){
@@ -540,6 +601,14 @@ async function submitForApproval() {
       createdAt: serverTimestamp()
     });
     submissionId = docRef.id;
+
+    // Save to local history
+    try {
+      const hKey = `ua-history-${designId}`;
+      const hist = JSON.parse(localStorage.getItem(hKey) || '[]');
+      hist.unshift({ sid: submissionId, ts: Date.now(), senderName, country });
+      localStorage.setItem(hKey, JSON.stringify(hist.slice(0, 10)));
+    } catch(e) {}
 
     // Update URL so they can return to this submission
     const newUrl = new URL(location.href);
@@ -667,6 +736,51 @@ document.getElementById('btnPNG').addEventListener('click', async () => {
   };
   img.src = url;
 });
+
+async function renderHistory() {
+  const container = document.getElementById('historySection');
+  if (!container) return;
+  try {
+    const hKey = `ua-history-${designId}`;
+    const hist = JSON.parse(localStorage.getItem(hKey) || '[]');
+    if (!hist.length) { container.style.display = 'none'; return; }
+    container.style.display = '';
+
+    // Load statuses from Firestore
+    const snaps = await Promise.all(hist.map(h => getDoc(doc(db, 'submissions', h.sid))));
+    const rows = snaps.map((snap, i) => {
+      if (!snap.exists()) return null;
+      const d = snap.data();
+      const status = d.status;
+      const label = status === 'approved' ? '✅ Aprobado' : status === 'rejected' ? '❌ Rechazado' : '⏳ Pendiente';
+      const color = status === 'approved' ? '#1b5e20' : status === 'rejected' ? '#7d1f00' : '#7d5a00';
+      const bg    = status === 'approved' ? '#e8f5e9'  : status === 'rejected' ? '#fce8e0'  : '#fff8e1';
+      const date  = hist[i].ts ? new Date(hist[i].ts).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+      const link  = status === 'approved' || status === 'pending'
+        ? `<a href="editor.html?id=${designId}&sid=${hist[i].sid}" style="font-size:11px;color:var(--cyan-2);text-decoration:none;">Ver →</a>`
+        : '';
+      const reason = status === 'rejected' && d.rejectionReason
+        ? `<div style="font-size:11px;color:#7d1f00;margin-top:3px;"><strong>Motivo:</strong> ${d.rejectionReason}</div>` : '';
+      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:${bg};border-radius:7px;margin-bottom:6px;">
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:600;color:${color};">${label}</div>
+          <div style="font-size:11px;color:var(--gray-text);">${date} · ${d.country || ''}</div>
+          ${reason}
+        </div>
+        <div style="flex-shrink:0;padding-top:2px;">${link}</div>
+      </div>`;
+    }).filter(Boolean);
+
+    container.innerHTML = `
+      <div class="card" style="margin-top:1.25rem;">
+        <div class="card-header">
+          <div class="card-header-accent"></div>
+          <span class="card-title">Mis envíos anteriores</span>
+        </div>
+        <div class="card-body">${rows.join('') || '<p style="font-size:13px;color:var(--gray-text);">Sin envíos registrados.</p>'}</div>
+      </div>`;
+  } catch(e) { console.warn('History error', e); }
+}
 
 init().catch(e=>{console.error(e);location.href='index.html';});
 </script>
